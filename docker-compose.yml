@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  keepa_bot:
+    build: .
+    container_name: keepa_telegram_bot
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+      - ./chrome-data:/app/chrome-data
+    env_file:
+      - .env
