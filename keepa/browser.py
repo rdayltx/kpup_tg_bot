@@ -17,6 +17,12 @@ def find_chromedriver_manually():
     Find the ChromeDriver executable path manually.
     """
     try:
+        # Check environment variable first
+        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
+        if chromedriver_path and os.path.exists(chromedriver_path) and os.access(chromedriver_path, os.X_OK):
+            logger.info(f"Found chromedriver from environment variable at: {chromedriver_path}")
+            return chromedriver_path
+            
         # Try to find chromedriver in the system
         result = subprocess.run(['which', 'chromedriver'], capture_output=True, text=True)
         if result.returncode == 0:
@@ -65,13 +71,6 @@ def initialize_driver(account_identifier=None):
     # Generate a session identifier
     session_id = account_identifier or str(uuid.uuid4())[:8]
     
-    # Cleanup old Chrome processes - only if necessary
-    try:
-        os.system("pkill -f chrome")
-        time.sleep(2)
-    except:
-        pass
-    
     # Configure Chrome options
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless=new")
@@ -91,8 +90,34 @@ def initialize_driver(account_identifier=None):
     
     # Try to create and configure driver
     try:
-        # First try using ChromeDriverManager
-        service = Service(ChromeDriverManager().install())
+        # First try direct path from environment variable
+        chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
+        if chromedriver_path and os.path.exists(chromedriver_path):
+            service = Service(executable_path=chromedriver_path)
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            logger.info(f"Successfully initialized Chrome using path from environment: {chromedriver_path}")
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            logger.info(f"Browser session initialized for account: {account_identifier}")
+            return driver
+    except Exception as e:
+        logger.warning(f"Failed to initialize Chrome using environment path: {str(e)}")
+        
+    try:
+        # Try using ChromeDriverManager with explicit Chrome version
+        chrome_version = None
+        try:
+            result = subprocess.run(['google-chrome', '--version'], capture_output=True, text=True)
+            if result.returncode == 0:
+                chrome_version = result.stdout.strip().split(' ')[2]
+                logger.info(f"Detected Chrome version: {chrome_version}")
+        except:
+            logger.warning("Could not detect Chrome version")
+            
+        if chrome_version:
+            service = Service(ChromeDriverManager(version=chrome_version).install())
+        else:
+            service = Service(ChromeDriverManager().install())
+            
         driver = webdriver.Chrome(service=service, options=chrome_options)
         logger.info("Successfully initialized Chrome using ChromeDriverManager")
     except Exception as e:
