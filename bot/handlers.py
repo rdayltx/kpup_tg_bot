@@ -129,24 +129,29 @@ async def update_price_manual_command(update: Update, context: ContextTypes.DEFA
         
         await update.message.reply_text(f"Updating ASIN {asin} with price {price} using account '{account_identifier}'...")
         
-        # Try to use existing session
-        driver = driver_sessions.get(account_identifier)
+        # Create a new driver instance for this operation
+        driver = initialize_driver(account_identifier)
         
-        if driver is None:
-            await update.message.reply_text(f"⚠️ Keepa session not started for account '{account_identifier}'. Starting...")
-            driver = initialize_driver()
+        try:
             success = login_to_keepa(driver, account_identifier)
             if not success:
-                await update.message.reply_text(f"❌ Failed to start Keepa session for account '{account_identifier}'.")
+                await update.message.reply_text(f"❌ Failed to login to Keepa with account '{account_identifier}'.")
                 return
-            driver_sessions[account_identifier] = driver
-        
-        success = update_keepa_product(driver, asin, price)
-        
-        if success:
-            await update.message.reply_text(f"✅ ASIN {asin} updated successfully with account '{account_identifier}'!")
-        else:
-            await update.message.reply_text(f"❌ Failed to update ASIN {asin} with account '{account_identifier}'.")
+            
+            success = update_keepa_product(driver, asin, price)
+            
+            if success:
+                await update.message.reply_text(f"✅ ASIN {asin} updated successfully with account '{account_identifier}'!")
+            else:
+                await update.message.reply_text(f"❌ Failed to update ASIN {asin} with account '{account_identifier}'.")
+        finally:
+            # Important: Always quit the driver to release resources
+            try:
+                driver.quit()
+                logger.info(f"Chrome driver session closed for account {account_identifier}")
+            except Exception as e:
+                logger.error(f"Error closing Chrome driver: {str(e)}")
+    
     except Exception as e:
         await update.message.reply_text(f"❌ Error updating price: {str(e)}")
 

@@ -99,65 +99,58 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 update_success = False
                 driver = None
                 
-                # Check if we have an existing session for this account
-                if account_identifier in driver_sessions:
-                    driver = driver_sessions[account_identifier]
-                    try:
-                        # Test if session is still valid
-                        driver.current_url
+                try:
+                    # Always initialize a new driver for each price update
+                    # This ensures a clean session each time
+                    driver = initialize_driver(account_identifier)
+                    login_success = login_to_keepa(driver, account_identifier)
+                    
+                    if login_success:
                         update_success = update_keepa_product(driver, asin, price)
-                    except Exception as e:
-                        logger.warning(f"Existing session for '{account_identifier}' is invalid: {str(e)}")
-                        # Session expired or browser crashed, we'll create a new one
-                        driver = None
-                
-                # Initialize driver if needed
-                if driver is None:
-                    try:
-                        driver = initialize_driver(account_identifier)
-                        login_success = login_to_keepa(driver, account_identifier)
-                        
-                        if login_success:
-                            # Store the session for future use
-                            driver_sessions[account_identifier] = driver
-                            
-                            update_success = update_keepa_product(driver, asin, price)
-                            if update_success:
-                                logger.info(f"✅ ASIN {asin} successfully updated on Keepa with price {price} using account {account_identifier}")
-                                
-                                # Notify admin
-                                if settings.ADMIN_ID:
-                                    await context.bot.send_message(
-                                        chat_id=settings.ADMIN_ID,
-                                        text=f"✅ ASIN {asin} updated with price {price} using account {account_identifier}"
-                                    )
-                            else:
-                                logger.error(f"❌ Failed to update ASIN {asin} on Keepa")
-                                
-                                # Notify admin
-                                if settings.ADMIN_ID:
-                                    await context.bot.send_message(
-                                        chat_id=settings.ADMIN_ID,
-                                        text=f"❌ Failed to update ASIN {asin} on Keepa using account {account_identifier}"
-                                    )
-                        else:
-                            logger.error(f"❌ Failed to login to Keepa with account {account_identifier}")
+                        if update_success:
+                            logger.info(f"✅ ASIN {asin} successfully updated on Keepa with price {price} using account {account_identifier}")
                             
                             # Notify admin
                             if settings.ADMIN_ID:
                                 await context.bot.send_message(
                                     chat_id=settings.ADMIN_ID,
-                                    text=f"❌ Failed to login to Keepa with account {account_identifier}"
+                                    text=f"✅ ASIN {asin} updated with price {price} using account {account_identifier}"
                                 )
-                    except Exception as e:
-                        logger.error(f"❌ Error updating price on Keepa: {str(e)}")
+                        else:
+                            logger.error(f"❌ Failed to update ASIN {asin} on Keepa")
+                            
+                            # Notify admin
+                            if settings.ADMIN_ID:
+                                await context.bot.send_message(
+                                    chat_id=settings.ADMIN_ID,
+                                    text=f"❌ Failed to update ASIN {asin} on Keepa using account {account_identifier}"
+                                )
+                    else:
+                        logger.error(f"❌ Failed to login to Keepa with account {account_identifier}")
                         
                         # Notify admin
                         if settings.ADMIN_ID:
                             await context.bot.send_message(
                                 chat_id=settings.ADMIN_ID,
-                                text=f"❌ Error updating price on Keepa with account {account_identifier}: {str(e)}"
+                                text=f"❌ Failed to login to Keepa with account {account_identifier}"
                             )
+                except Exception as e:
+                    logger.error(f"❌ Error updating price on Keepa: {str(e)}")
+                    
+                    # Notify admin
+                    if settings.ADMIN_ID:
+                        await context.bot.send_message(
+                            chat_id=settings.ADMIN_ID,
+                            text=f"❌ Error updating price on Keepa with account {account_identifier}: {str(e)}"
+                        )
+                finally:
+                    # Important: Always quit the driver to release resources
+                    if driver:
+                        try:
+                            driver.quit()
+                            logger.info(f"Chrome driver session closed for account {account_identifier}")
+                        except Exception as e:
+                            logger.error(f"Error closing Chrome driver: {str(e)}")
                 
                 # Format message as requested: "ASIN, Comment, Source"
                 result_message = f"{asin}, {comment}, {source}"

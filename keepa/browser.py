@@ -71,6 +71,12 @@ def initialize_driver(account_identifier=None):
     # Generate a session identifier
     session_id = account_identifier or str(uuid.uuid4())[:8]
     
+    # Generate a unique user data directory for each session
+    # This prevents the "user data directory is already in use" error
+    unique_id = f"{session_id}-{uuid.uuid4().hex[:8]}"
+    chrome_data_dir = os.getenv("CHROME_USER_DATA_DIR", "/tmp/chrome-data")
+    unique_data_dir = f"{chrome_data_dir}-{unique_id}"
+    
     # Configure Chrome options
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless=new")
@@ -78,9 +84,9 @@ def initialize_driver(account_identifier=None):
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     
-    # Configure Chrome data directory - use unique directory for each account
-    chrome_data_dir = os.getenv("CHROME_USER_DATA_DIR", f"/tmp/chrome-data-{session_id}")
-    chrome_options.add_argument(f"--user-data-dir={chrome_data_dir}")
+    # Use the unique data directory
+    chrome_options.add_argument(f"--user-data-dir={unique_data_dir}")
+    logger.info(f"Using unique Chrome data directory: {unique_data_dir}")
     
     # Additional configurations to avoid detection
     chrome_options.add_argument("--window-size=1920,1080")
