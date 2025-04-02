@@ -42,12 +42,12 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Baixar uma versão estável do ChromeDriver (114.0.5735.90)
-RUN wget -q "https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip" -O /tmp/chromedriver.zip \
+# Instalar ChromeDriver para Chrome versão 135
+RUN wget -q "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/135.0.7049.42/linux64/chromedriver-linux64.zip" -O /tmp/chromedriver.zip \
     && unzip /tmp/chromedriver.zip -d /tmp/ \
-    && mv /tmp/chromedriver /usr/local/bin/chromedriver \
+    && mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
     && chmod +x /usr/local/bin/chromedriver \
-    && rm /tmp/chromedriver.zip
+    && rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64
 
 # Definir o caminho do ChromeDriver
 ENV CHROMEDRIVER_PATH=/usr/local/bin/chromedriver

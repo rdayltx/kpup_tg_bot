@@ -85,7 +85,7 @@ def initialize_driver(account_identifier=None):
     # Additional configurations to avoid detection
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     
     # Try to create and configure driver
@@ -93,6 +93,7 @@ def initialize_driver(account_identifier=None):
         # First try direct path from environment variable
         chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
         if chromedriver_path and os.path.exists(chromedriver_path):
+            logger.info(f"Using ChromeDriver from environment path: {chromedriver_path}")
             service = Service(executable_path=chromedriver_path)
             driver = webdriver.Chrome(service=service, options=chrome_options)
             logger.info(f"Successfully initialized Chrome using path from environment: {chromedriver_path}")
@@ -101,45 +102,37 @@ def initialize_driver(account_identifier=None):
             return driver
     except Exception as e:
         logger.warning(f"Failed to initialize Chrome using environment path: {str(e)}")
-        
-    try:
-        # Try using ChromeDriverManager with explicit Chrome version
-        chrome_version = None
+    
+    # Try finding chromedriver manually
+    chromedriver_path = find_chromedriver_manually()
+    
+    if chromedriver_path:
         try:
-            result = subprocess.run(['google-chrome', '--version'], capture_output=True, text=True)
-            if result.returncode == 0:
-                chrome_version = result.stdout.strip().split(' ')[2]
-                logger.info(f"Detected Chrome version: {chrome_version}")
-        except:
-            logger.warning("Could not detect Chrome version")
+            service = Service(executable_path=chromedriver_path)
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            logger.info(f"Successfully initialized Chrome using manual path: {chromedriver_path}")
             
-        if chrome_version:
-            service = Service(ChromeDriverManager(version=chrome_version).install())
-        else:
+            # Disable webdriver flag
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            logger.info(f"Browser session initialized for account: {account_identifier}")
+            return driver
+        except Exception as e:
+            logger.error(f"Error using manual chromedriver path: {str(e)}")
+            raise Exception(f"Failed to initialize Chrome. Error: {str(e)}")
+    else:
+        # Last resort: Try using built-in Chrome
+        try:
+            logger.info("Attempting to use webdriver_manager as last resort...")
             service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            logger.info("Successfully initialized Chrome using ChromeDriverManager")
             
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        logger.info("Successfully initialized Chrome using ChromeDriverManager")
-    except Exception as e:
-        logger.error(f"Error using ChromeDriverManager: {str(e)}")
-        
-        # Try finding chromedriver manually
-        chromedriver_path = find_chromedriver_manually()
-        
-        if chromedriver_path:
-            try:
-                service = Service(executable_path=chromedriver_path)
-                driver = webdriver.Chrome(service=service, options=chrome_options)
-                logger.info(f"Successfully initialized Chrome using manual path: {chromedriver_path}")
-            except Exception as e2:
-                logger.error(f"Error using manual chromedriver path: {str(e2)}")
-                raise Exception(f"Failed to initialize Chrome with both methods. Original error: {str(e)}, Manual path error: {str(e2)}")
-        else:
-            raise Exception(f"Failed to find chromedriver. Original error: {str(e)}")
-    
-    # Disable webdriver flag
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    
-    logger.info(f"Browser session initialized for account: {account_identifier}")
-    
-    return driver
+            # Disable webdriver flag
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            logger.info(f"Browser session initialized for account: {account_identifier}")
+            return driver
+        except Exception as e:
+            logger.error(f"Failed to initialize Chrome with all methods. Error: {str(e)}")
+            raise Exception(f"Failed to initialize Chrome with all methods. Error: {str(e)}")
