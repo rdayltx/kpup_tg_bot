@@ -1,6 +1,9 @@
 FROM python:3.10-slim
 
-# Install Chrome and other dependencies
+# Configuração para evitar perguntas durante a instalação de pacotes
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Instalar dependências
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -9,34 +12,69 @@ RUN apt-get update && apt-get install -y \
     curl \
     xvfb \
     build-essential \
+    procps \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcb-dri3-0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome
+# Instalar Chrome
 RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
     && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory
+# Baixar a versão específica do ChromeDriver que corresponde ao Chrome instalado
+RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d. -f1) \
+    && wget -q "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION" -O /tmp/chromedriver_version \
+    && CHROMEDRIVER_VERSION=$(cat /tmp/chromedriver_version) \
+    && wget -q "https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip" -O /tmp/chromedriver.zip \
+    && unzip /tmp/chromedriver.zip -d /tmp/ \
+    && mv /tmp/chromedriver /usr/local/bin/chromedriver \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm /tmp/chromedriver.zip /tmp/chromedriver_version
+
+# Definir o caminho do ChromeDriver
+ENV CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
+ENV PATH="${PATH}:/usr/local/bin/chromedriver"
+
+# Configurar o diretório de trabalho
 WORKDIR /app
 
-# Setup app directories
-RUN mkdir -p /app/logs /app/data /app/backups
+# Criar diretórios necessários
+RUN mkdir -p /app/logs /app/data /app/backups /app/chrome-data
 
-# Copy the requirements file and install dependencies
+# Copiar arquivo de requisitos e instalar dependências
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
+# Copiar o código da aplicação
 COPY . .
 
-# Set environment variables
+# Configurar variáveis de ambiente
 ENV PYTHONUNBUFFERED=1
 ENV CHROME_USER_DATA_DIR=/app/chrome-data
 
-# Create a volume for persistent data
+# Criar volume para dados persistentes
 VOLUME ["/app/data", "/app/logs", "/app/backups"]
 
-# Run the bot
+# Executar o bot
 CMD ["python", "main.py"]
