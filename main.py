@@ -37,7 +37,7 @@ def main() -> None:
     
     # Start polling
     logger.info("Bot started. Listening for updates...")
-    application.run_polling(allowed_updates=Application.ALL_TYPES)
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
