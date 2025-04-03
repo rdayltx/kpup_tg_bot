@@ -24,8 +24,8 @@ else
     echo "No Chrome processes found. Nothing to clean up."
 fi
 
-echo "Cleaning up any leftover Chrome data directories..."
-# Only remove temporary Chrome data directories, not the main one
+echo "Cleaning up any leftover temporary Chrome data directories..."
+# Apenas remover diretórios temporários Chrome, não as sessões permanentes
 find /tmp -maxdepth 1 -name "chrome-data-*" -type d -mmin +60 -exec rm -rf {} \;
 
 echo "Cleanup completed!"

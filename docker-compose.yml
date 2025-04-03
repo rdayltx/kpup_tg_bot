@@ -9,10 +9,10 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./backups:/app/backups
-      - ./chrome-data:/app/chrome-data  # Volume normal ao invés de tmpfs
+      - ./chrome-sessions:/app/chrome-sessions # Volume permanente para sessões
     env_file:
       - .env
     environment:
-      - CHROME_USER_DATA_DIR=/app/chrome-data
+      - CHROME_USER_DATA_DIR=/app/chrome-sessions
     # Add proper shutdown process
     stop_grace_period: 30s
