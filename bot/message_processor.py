@@ -103,14 +103,14 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     if potential_account in settings.KEEPA_ACCOUNTS:
                         account_identifier = potential_account
                         logger.info(f"Usando parte do comentário como identificador de conta: {account_identifier}")
-            else:
-                # Se a fonte não for uma conta válida, verificar se há uma terceira parte no comentário
-                parts = comment.strip().split(',')
-                if len(parts) >= 3:
-                    potential_account = parts[2].strip()
-                    if potential_account in settings.KEEPA_ACCOUNTS:
-                        account_identifier = potential_account
-                        logger.info(f"Usando parte do comentário como identificador de conta: {account_identifier}")
+                else:
+                    # Se a fonte não for uma conta válida, verificar se há uma terceira parte no comentário
+                    parts = comment.strip().split(',')
+                    if len(parts) >= 3:
+                        potential_account = parts[2].strip()
+                        if potential_account in settings.KEEPA_ACCOUNTS:
+                            account_identifier = potential_account
+                            logger.info(f"Usando parte do comentário como identificador de conta: {account_identifier}")
             
             # Se ainda não tiver uma conta válida, usar a padrão
             if not account_identifier:
@@ -241,13 +241,14 @@ async def handle_delete_comment(context, asin, source, comment):
     driver = None
     
     # Usar fonte como identificador de conta se existir em nossas contas
+    account_identifier = None
     if source.lower() in [acc.lower() for acc in settings.KEEPA_ACCOUNTS.keys()]:
-    # Encontrar a chave correta com case matching
-    for acc_key in settings.KEEPA_ACCOUNTS.keys():
-        if source.lower() == acc_key.lower():
-            account_identifier = acc_key
-            break
-    logger.info(f"Usando fonte como identificador de conta: {account_identifier}")
+        # Encontrar a chave correta com case matching
+        for acc_key in settings.KEEPA_ACCOUNTS.keys():
+            if source.lower() == acc_key.lower():
+                account_identifier = acc_key
+                break
+        logger.info(f"Usando fonte como identificador de conta: {account_identifier}")
     else:
         # Se a fonte não for uma conta válida, verificar se há uma terceira parte no comentário
         parts = comment.strip().split(',')
@@ -255,12 +256,12 @@ async def handle_delete_comment(context, asin, source, comment):
             potential_account = parts[2].strip()
             if potential_account in settings.KEEPA_ACCOUNTS:
                 account_identifier = potential_account
-                logger.info(f"Usando parte do comentário como identificador de conta para exclusão: {account_identifier}")
-    
-    # Se ainda não tiver uma conta válida, usar a padrão
-    if not account_identifier:
-        account_identifier = settings.DEFAULT_KEEPA_ACCOUNT
-        logger.info(f"Nenhuma conta válida encontrada para exclusão, usando a padrão: {account_identifier}")
+                logger.info(f"Usando parte do comentário como identificador de conta: {account_identifier}")
+        
+        # Se ainda não tiver uma conta válida, usar a padrão
+        if not account_identifier:
+            account_identifier = settings.DEFAULT_KEEPA_ACCOUNT
+            logger.info(f"Nenhuma conta válida encontrada para exclusão, usando a padrão: {account_identifier}")
     
     try:
         # Inicializar um novo driver
