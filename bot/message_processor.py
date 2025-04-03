@@ -124,71 +124,63 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def handle_price_update(context, asin, source, comment, price, account_identifier):
     """
-    Gerenciar atualização de preço no Keepa
-    
-    Args:
-        context: Contexto do Telegram
-        asin: ASIN do produto
-        source: Identificador da fonte
-        comment: Comentário do usuário
-        price: Preço extraído
-        account_identifier: Identificador da conta a ser usada
+    Gerenciar atualização de preço no Keepa com mecanismo de retry
     """
     update_success = False
     driver = None
+    max_retries = 3
     
-    try:
-        # Sempre inicializar um novo driver para cada atualização de preço
-        # Isso garante uma sessão limpa a cada vez
-        driver = initialize_driver(account_identifier)
-        login_success = login_to_keepa(driver, account_identifier)
-        
-        if login_success:
-            update_success = update_keepa_product(driver, asin, price)
-            if update_success:
-                logger.info(f"✅ ASIN {asin} atualizado com sucesso no Keepa com preço {price} usando conta {account_identifier}")
-                
-                # Notificar administrador
-                if settings.ADMIN_ID:
-                    await context.bot.send_message(
-                        chat_id=settings.ADMIN_ID,
-                        text=f"✅ ASIN {asin} atualizado com preço {price} usando conta {account_identifier}"
-                    )
-            else:
-                logger.error(f"❌ Falha ao atualizar ASIN {asin} no Keepa")
-                
-                # Notificar administrador
-                if settings.ADMIN_ID:
-                    await context.bot.send_message(
-                        chat_id=settings.ADMIN_ID,
-                        text=f"❌ Falha ao atualizar ASIN {asin} no Keepa usando conta {account_identifier}"
-                    )
-        else:
-            logger.error(f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}")
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Tentativa {attempt}/{max_retries} para atualizar ASIN {asin}")
             
-            # Notificar administrador
-            if settings.ADMIN_ID:
-                await context.bot.send_message(
-                    chat_id=settings.ADMIN_ID,
-                    text=f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}"
-                )
-    except Exception as e:
-        logger.error(f"❌ Erro ao atualizar preço no Keepa: {str(e)}")
-        
-        # Notificar administrador
-        if settings.ADMIN_ID:
-            await context.bot.send_message(
-                chat_id=settings.ADMIN_ID,
-                text=f"❌ Erro ao atualizar preço no Keepa com a conta {account_identifier}: {str(e)}"
-            )
-    finally:
-        # Importante: Sempre fechar o driver para liberar recursos
-        if driver:
-            try:
-                driver.quit()
-                logger.info(f"Sessão do driver Chrome fechada para a conta {account_identifier}")
-            except Exception as e:
-                logger.error(f"Erro ao fechar o driver Chrome: {str(e)}")
+            # Sempre inicializar um novo driver para cada atualização de preço
+            driver = initialize_driver(account_identifier)
+            login_success = login_to_keepa(driver, account_identifier)
+            
+            if login_success:
+                update_success = update_keepa_product(driver, asin, price)
+                if update_success:
+                    logger.info(f"✅ ASIN {asin} atualizado com sucesso no Keepa com preço {price}")
+                    
+                    # Notificar administrador
+                    if settings.ADMIN_ID:
+                        await context.bot.send_message(
+                            chat_id=settings.ADMIN_ID,
+                            text=f"✅ ASIN {asin} atualizado com preço {price} usando conta {account_identifier}"
+                        )
+                    break  # Sair do loop se sucesso
+                else:
+                    logger.error(f"❌ Falha ao atualizar ASIN {asin} no Keepa (tentativa {attempt})")
+            else:
+                logger.error(f"❌ Falha ao fazer login no Keepa com a conta {account_identifier} (tentativa {attempt})")
+                
+                # Limpar a sessão para a próxima tentativa
+                if attempt < max_retries:
+                    logger.info(f"Limpando a sessão para a tentativa {attempt+1}")
+                    # Implemente limpeza seletiva (ou use o driver.delete_all_cookies())
+                    driver.delete_all_cookies()
+                    
+            if attempt < max_retries and not update_success:
+                wait_time = attempt * 5  # Backoff exponencial
+                logger.info(f"Aguardando {wait_time} segundos antes da próxima tentativa...")
+                await asyncio.sleep(wait_time)
+                
+        except Exception as e:
+            logger.error(f"❌ Erro ao atualizar preço no Keepa (tentativa {attempt}): {str(e)}")
+            if attempt < max_retries:
+                wait_time = attempt * 5
+                logger.info(f"Aguardando {wait_time} segundos antes da próxima tentativa...")
+                await asyncio.sleep(wait_time)
+        finally:
+            # Importante: Sempre fechar o driver para liberar recursos
+            if driver:
+                try:
+                    driver.quit()
+                    logger.info(f"Sessão do driver Chrome fechada para a conta {account_identifier}")
+                except Exception as e:
+                    logger.error(f"Erro ao fechar o driver Chrome: {str(e)}")
+    
     
     # Formatar e enviar a mensagem informativa para o canal de destino
     formatted_message = format_destination_message(

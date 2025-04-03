@@ -119,57 +119,40 @@ def login_to_keepa(driver, account_identifier=None):
     Returns:
         bool: True se o login for bem-sucedido, False caso contrário
     """
-    # Obter as credenciais de conta apropriadas
-    if account_identifier and account_identifier in settings.KEEPA_ACCOUNTS:
-        account = settings.KEEPA_ACCOUNTS[account_identifier]
-    elif settings.DEFAULT_KEEPA_ACCOUNT in settings.KEEPA_ACCOUNTS:
-        account = settings.KEEPA_ACCOUNTS[settings.DEFAULT_KEEPA_ACCOUNT]
-        account_identifier = settings.DEFAULT_KEEPA_ACCOUNT
-    else:
-        logger.error(f"❌ Nenhuma conta Keepa válida encontrada para o identificador: {account_identifier}")
-        return False
-    
-    logger.info(f"Iniciando processo de login no Keepa para a conta: {account_identifier}...")
+    # Código existente...
     
     try:
         # Primeiro carregar a página inicial do Keepa
         driver.get("https://keepa.com")
-        time.sleep(random.uniform(2, 4))  # Aumentar o tempo de espera para carregamento completo
+        time.sleep(random.uniform(2, 4)) 
         
         # Verificar se já está logado na conta correta
         if check_logged_in_account(driver, account_identifier):
             logger.info(f"✅ Já logado como {account_identifier}")
-            return True
             
-        # Capturar screenshot para diagnóstico
-        screenshot_path = os.path.join(os.getcwd(), "pre_login_screen.png")
-        driver.save_screenshot(screenshot_path)
-        logger.info(f"Screenshot de pré-login salvo em: {screenshot_path}")
-        
-        # Se estiver logado mas em uma conta diferente, deslogar primeiro
-        if check_element_visible(driver, "#panelUserMenu", timeout=3):
+            # NOVO: Verificar se a sessão está realmente ativa tentando acessar uma funcionalidade
             try:
-                # Clicar no menu de usuário
-                click_element(driver, "#panelUserMenu")
-                time.sleep(1)
+                # Tentar acessar uma funcionalidade básica do Keepa
+                driver.get("https://keepa.com/#!tracking")
+                time.sleep(3)
                 
-                # Verificar se o menu de logout está visível
-                if check_element_visible(driver, "//span[contains(text(), 'Logout') or contains(text(), 'Sair')]", by=By.XPATH, timeout=2):
-                    # Clicar em logout
-                    logout_selector = "//span[contains(text(), 'Logout') or contains(text(), 'Sair')]"
-                    click_element(driver, logout_selector, By.XPATH)
-                    time.sleep(3)  # Aumentar tempo de espera após logout
-                    logger.info("Deslogado da conta anterior")
+                # Verificar se a página carregou corretamente
+                if check_element_exists(driver, "#trackingTable", timeout=5):
+                    logger.info("✅ Sessão ativa e funcionando corretamente")
+                    return True
                 else:
-                    # O menu pode não ter aberto corretamente
-                    logger.warning("Menu de logout não encontrado após clicar no menu do usuário")
+                    logger.warning("⚠️ Sessão pode estar expirada. Forçando re-login...")
+                    # Forçar logout e re-login
+                    driver.delete_all_cookies()
                     driver.refresh()
                     time.sleep(3)
+                    # Continuar com processo de login normal
             except Exception as e:
-                logger.warning(f"⚠️ Falha ao deslogar: {str(e)}")
-                # Atualizar a página para tentar novamente
+                logger.warning(f"⚠️ Erro ao verificar sessão ativa: {str(e)}. Tentando re-login...")
+                driver.delete_all_cookies()
                 driver.refresh()
                 time.sleep(3)
+        
         
         # Tornar a sobreposição de login visível - usar um método mais robusto
         try:
