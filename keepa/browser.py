@@ -68,12 +68,13 @@ def initialize_driver(account_identifier=None):
     Returns:
         WebDriver: Instância configurada do WebDriver Chrome
     """
-    # Usar um identificador de sessão baseado na conta
+    # Gerar um identificador de sessão
     session_id = account_identifier or "default"
     
-    # Usar um diretório fixo para cada conta, sem UUID aleatório
+    # Usar UUID para evitar conflitos entre sessões
+    unique_id = f"{session_id}-{uuid.uuid4().hex[:8]}"
     chrome_data_dir = os.getenv("CHROME_USER_DATA_DIR", "/tmp/chrome-data")
-    unique_data_dir = f"{chrome_data_dir}-{session_id}"
+    unique_data_dir = f"{chrome_data_dir}-{unique_id}"
     
     # Garantir que o diretório exista
     os.makedirs(unique_data_dir, exist_ok=True)
@@ -85,11 +86,9 @@ def initialize_driver(account_identifier=None):
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     
-    # Usar o diretório de dados fixo por conta
+    # Usar o diretório de dados único
     chrome_options.add_argument(f"--user-data-dir={unique_data_dir}")
-    logger.info(f"Usando diretório de dados Chrome para conta: {unique_data_dir}")
-    
-    # Resto do código permanece o mesmo...
+    logger.info(f"Usando diretório de dados Chrome único: {unique_data_dir}")
     
     # Configurações adicionais para evitar detecção
     chrome_options.add_argument("--window-size=1920,1080")
