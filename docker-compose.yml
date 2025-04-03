@@ -9,11 +9,7 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./backups:/app/backups
-      # Use tmpfs for chrome-data to ensure ephemeral storage
-      - type: tmpfs
-        target: /app/chrome-data
-        tmpfs:
-          size: 256M
+      - ./chrome-data:/app/chrome-data  # Volume normal ao invés de tmpfs
     env_file:
       - .env
     environment:
