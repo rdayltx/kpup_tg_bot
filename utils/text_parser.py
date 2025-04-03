@@ -7,19 +7,19 @@ logger = get_logger(__name__)
 
 def extract_asin_from_text(text):
     """
-    Extract Amazon ASIN from text
+    Extrair ASIN da Amazon do texto
     """
     if not text:
         return None
         
-    # Regex pattern for Amazon URLs
+    # Padrão regex para URLs da Amazon
     amazon_url_pattern = r'https?://(?:www\.)?amazon\.com\.br/(?:[^/]+/)?(?:dp|gp/product|gp/aw/d|exec/obidos/asin|o)/([A-Z0-9]{10})'
     
     amazon_match = re.search(amazon_url_pattern, text)
     if amazon_match:
         return amazon_match.group(1).upper()
     
-    # Also look for raw ASINs in the text (just in case)
+    # Também procurar por ASINs puros no texto (só por garantia)
     asin_pattern = r'\b([A-Z0-9]{10})\b'
     asin_match = re.search(asin_pattern, text)
     if asin_match:
@@ -29,79 +29,79 @@ def extract_asin_from_text(text):
 
 def extract_source_from_text(text):
     """
-    Extract source information from text
+    Extrair informação da fonte do texto
     """
     if not text:
-        return "Unknown"
+        return "Desconhecido"
         
-    # Regex pattern for source
+    # Padrão regex para fonte
     source_pattern = r'Fonte:\s*(\w+)'
     
     source_match = re.search(source_pattern, text)
     if source_match:
         return source_match.group(1)
     
-    return "Unknown"
+    return "Desconhecido"
 
 def extract_price_from_comment(comment):
     """
-    Extract price from comment text
+    Extrair preço do texto do comentário
     
-    Looks for patterns like "R$ 99,99", "99.99", etc.
-    Adds ".00" for integer numbers.
+    Procura por padrões como "R$ 99,99", "99.99", etc.
+    Adiciona ".00" para números inteiros.
     """
     if not comment:
         return None
         
-    # Common price patterns for decimal values
+    # Padrões comuns de preço para valores decimais
     decimal_patterns = [
-        r'R\$\s*(\d+[,.]\d+)',  # R$ 99,99 or R$ 99.99
-        r'(\d+[,.]\d+)\s*reais',  # 99,99 reais or 99.99 reais
-        r'(\d+[,.]\d+)',  # 99,99 or 99.99 (generic)
+        r'R\$\s*(\d+[,.]\d+)',  # R$ 99,99 ou R$ 99.99
+        r'(\d+[,.]\d+)\s*reais',  # 99,99 reais ou 99.99 reais
+        r'(\d+[,.]\d+)',  # 99,99 ou 99.99 (genérico)
     ]
     
-    # Patterns for integer values
+    # Padrões para valores inteiros
     integer_patterns = [
-        r'R\$\s*(\d+)(?![,.]\d)',  # R$ 99 (no decimal)
-        r'(\d+)\s*reais(?![,.]\d)',  # 99 reais (no decimal)
-        r'(?<!\d[,.])(\d+)(?![,.]\d)',  # 99 (generic integer)
+        r'R\$\s*(\d+)(?![,.]\d)',  # R$ 99 (sem decimal)
+        r'(\d+)\s*reais(?![,.]\d)',  # 99 reais (sem decimal)
+        r'(?<!\d[,.])(\d+)(?![,.]\d)',  # 99 (inteiro genérico)
     ]
     
-    # Check decimal patterns first
+    # Verificar padrões decimais primeiro
     for pattern in decimal_patterns:
         match = re.search(pattern, comment)
         if match:
-            price = match.group(1).replace(',', '.')  # Normalize to dot format
+            price = match.group(1).replace(',', '.')  # Normalizar para formato com ponto
             return price
     
-    # Then check integer patterns
+    # Então verificar padrões inteiros
     for pattern in integer_patterns:
         match = re.search(pattern, comment)
         if match:
-            return match.group(1) + ".00"  # Add ".00" for integer values
+            return match.group(1) + ".00"  # Adicionar ".00" para valores inteiros
     
-    # If no pattern matched
+    # Se nenhum padrão corresponder
     return None
 
 def extract_account_identifier(comment):
     """
-    Extract account identifier from the comment
+    Extrair identificador de conta do comentário
     
-    Format: "ASIN, price, identifier"
-    The identifier is the third part after the second comma
+    Formato: "ASIN, preço, identificador"
+    O identificador é a terceira parte após a segunda vírgula
     """
     if not comment:
         return None
     
-    logger.info(f"Extracting account identifier from: '{comment}'")
+    logger.info(f"Extraindo identificador de conta de: '{comment}'")
     
-    # Split by comma and check if we have at least 3 parts
+    # Dividir por vírgula e verificar se temos pelo menos 3 partes
     parts = comment.strip().split(',')
     if len(parts) >= 3:
-        # The identifier is the third part, trimmed of whitespace
+        # O identificador é a terceira parte, sem espaços em branco
         identifier = parts[2].strip()
-        logger.info(f"Found account identifier: '{identifier}'")
+        logger.info(f"Identificador de conta encontrado: '{identifier}'")
         return identifier
     
-    logger.info("No account identifier found in the comment")
+    logger.info("Nenhum identificador de conta encontrado no comentário")
     return None

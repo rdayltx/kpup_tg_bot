@@ -14,23 +14,23 @@ logger = get_logger(__name__)
 
 def find_chromedriver_manually():
     """
-    Find the ChromeDriver executable path manually.
+    Encontrar o caminho do executável ChromeDriver manualmente.
     """
     try:
-        # Check environment variable first
+        # Verificar variável de ambiente primeiro
         chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
         if chromedriver_path and os.path.exists(chromedriver_path) and os.access(chromedriver_path, os.X_OK):
-            logger.info(f"Found chromedriver from environment variable at: {chromedriver_path}")
+            logger.info(f"Chromedriver encontrado na variável de ambiente em: {chromedriver_path}")
             return chromedriver_path
             
-        # Try to find chromedriver in the system
+        # Tentar encontrar chromedriver no sistema
         result = subprocess.run(['which', 'chromedriver'], capture_output=True, text=True)
         if result.returncode == 0:
             chromedriver_path = result.stdout.strip()
-            logger.info(f"Found chromedriver at: {chromedriver_path}")
+            logger.info(f"Chromedriver encontrado em: {chromedriver_path}")
             return chromedriver_path
         
-        # Look in common directories
+        # Procurar em diretórios comuns
         common_paths = [
             "/usr/local/bin/chromedriver",
             "/usr/bin/chromedriver",
@@ -39,10 +39,10 @@ def find_chromedriver_manually():
         
         for path in common_paths:
             if os.path.exists(path) and os.access(path, os.X_OK):
-                logger.info(f"Found chromedriver at: {path}")
+                logger.info(f"Chromedriver encontrado em: {path}")
                 return path
         
-        # Search in the ~/.wdm directory recursively
+        # Buscar no diretório ~/.wdm recursivamente
         wdm_dir = os.path.expanduser("~/.wdm")
         if os.path.exists(wdm_dir):
             for root, _, files in os.walk(wdm_dir):
@@ -50,95 +50,95 @@ def find_chromedriver_manually():
                     if file == "chromedriver" or file == "chromedriver.exe":
                         file_path = os.path.join(root, file)
                         if os.access(file_path, os.X_OK):
-                            logger.info(f"Found chromedriver at: {file_path}")
+                            logger.info(f"Chromedriver encontrado em: {file_path}")
                             return file_path
         
         return None
     except Exception as e:
-        logger.error(f"Error finding chromedriver: {str(e)}")
+        logger.error(f"Erro ao procurar o chromedriver: {str(e)}")
         return None
 
 def initialize_driver(account_identifier=None):
     """
-    Initialize Selenium WebDriver for Chrome
+    Inicializar WebDriver Selenium para Chrome
     
     Args:
-        account_identifier: Optional identifier to create separate data directories for different accounts
+        account_identifier: Identificador opcional para criar diretórios de dados separados para diferentes contas
     
     Returns:
-        WebDriver: Configured Chrome WebDriver instance
+        WebDriver: Instância configurada do WebDriver Chrome
     """
-    # Generate a session identifier
+    # Gerar um identificador de sessão
     session_id = account_identifier or str(uuid.uuid4())[:8]
     
-    # Generate a unique user data directory for each session
-    # This prevents the "user data directory is already in use" error
+    # Gerar um diretório de dados único para cada sessão
+    # Isso evita o erro "diretório de dados do usuário já está em uso"
     unique_id = f"{session_id}-{uuid.uuid4().hex[:8]}"
     chrome_data_dir = os.getenv("CHROME_USER_DATA_DIR", "/tmp/chrome-data")
     unique_data_dir = f"{chrome_data_dir}-{unique_id}"
     
-    # Configure Chrome options
+    # Configurar opções do Chrome
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     
-    # Use the unique data directory
+    # Usar o diretório de dados único
     chrome_options.add_argument(f"--user-data-dir={unique_data_dir}")
-    logger.info(f"Using unique Chrome data directory: {unique_data_dir}")
+    logger.info(f"Usando diretório de dados Chrome único: {unique_data_dir}")
     
-    # Additional configurations to avoid detection
+    # Configurações adicionais para evitar detecção
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     
-    # Try to create and configure driver
+    # Tentar criar e configurar o driver
     try:
-        # First try direct path from environment variable
+        # Primeiro tentar caminho direto da variável de ambiente
         chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
         if chromedriver_path and os.path.exists(chromedriver_path):
-            logger.info(f"Using ChromeDriver from environment path: {chromedriver_path}")
+            logger.info(f"Usando ChromeDriver do caminho da variável de ambiente: {chromedriver_path}")
             service = Service(executable_path=chromedriver_path)
             driver = webdriver.Chrome(service=service, options=chrome_options)
-            logger.info(f"Successfully initialized Chrome using path from environment: {chromedriver_path}")
+            logger.info(f"Chrome inicializado com sucesso usando caminho da variável de ambiente: {chromedriver_path}")
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            logger.info(f"Browser session initialized for account: {account_identifier}")
+            logger.info(f"Sessão do navegador inicializada para conta: {account_identifier}")
             return driver
     except Exception as e:
-        logger.warning(f"Failed to initialize Chrome using environment path: {str(e)}")
+        logger.warning(f"Falha ao inicializar Chrome usando caminho da variável de ambiente: {str(e)}")
     
-    # Try finding chromedriver manually
+    # Tentar encontrar chromedriver manualmente
     chromedriver_path = find_chromedriver_manually()
     
     if chromedriver_path:
         try:
             service = Service(executable_path=chromedriver_path)
             driver = webdriver.Chrome(service=service, options=chrome_options)
-            logger.info(f"Successfully initialized Chrome using manual path: {chromedriver_path}")
+            logger.info(f"Chrome inicializado com sucesso usando caminho manual: {chromedriver_path}")
             
-            # Disable webdriver flag
+            # Desabilitar flag webdriver
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             
-            logger.info(f"Browser session initialized for account: {account_identifier}")
+            logger.info(f"Sessão do navegador inicializada para conta: {account_identifier}")
             return driver
         except Exception as e:
-            logger.error(f"Error using manual chromedriver path: {str(e)}")
-            raise Exception(f"Failed to initialize Chrome. Error: {str(e)}")
+            logger.error(f"Erro ao usar caminho manual do chromedriver: {str(e)}")
+            raise Exception(f"Falha ao inicializar Chrome. Erro: {str(e)}")
     else:
-        # Last resort: Try using built-in Chrome
+        # Último recurso: Tentar usar Chrome integrado
         try:
-            logger.info("Attempting to use webdriver_manager as last resort...")
+            logger.info("Tentando usar webdriver_manager como último recurso...")
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=chrome_options)
-            logger.info("Successfully initialized Chrome using ChromeDriverManager")
+            logger.info("Chrome inicializado com sucesso usando ChromeDriverManager")
             
-            # Disable webdriver flag
+            # Desabilitar flag webdriver
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             
-            logger.info(f"Browser session initialized for account: {account_identifier}")
+            logger.info(f"Sessão do navegador inicializada para conta: {account_identifier}")
             return driver
         except Exception as e:
-            logger.error(f"Failed to initialize Chrome with all methods. Error: {str(e)}")
-            raise Exception(f"Failed to initialize Chrome with all methods. Error: {str(e)}")
+            logger.error(f"Falha ao inicializar Chrome com todos os métodos. Erro: {str(e)}")
+            raise Exception(f"Falha ao inicializar Chrome com todos os métodos. Erro: {str(e)}")

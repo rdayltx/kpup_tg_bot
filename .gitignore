@@ -3,3 +3,6 @@ keepaUpdateEnv
 single_bot
 .env
 __pycache__
+logs
+backups
+chrome-data

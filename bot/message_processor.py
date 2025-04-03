@@ -1,25 +1,32 @@
 import logging
 from datetime import datetime
+import re
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from config.settings import load_settings
 from data.data_manager import load_post_info, save_post_info
 from utils.text_parser import extract_asin_from_text, extract_source_from_text, extract_price_from_comment
 from keepa.browser import initialize_driver
 from keepa.api import login_to_keepa, update_keepa_product
-
 from utils.logger import get_logger
+
+# Importar a nova função de exclusão de rastreamento
+from keepa.api import delete_keepa_tracking
+
+# Importar o formatador de mensagens aprimorado
+from utils.message_formatter import format_destination_message
 
 logger = get_logger(__name__)
 settings = load_settings()
 
-# Initialize global variables
-# This will be shared with handlers.py
+# Inicializar variáveis globais
+# Isso será compartilhado com handlers.py
 driver_sessions = {}
 post_info = load_post_info()
 
 async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Process messages from channel/group and identify posts and comments."""
+    """Processar mensagens do canal/grupo e identificar posts e comentários."""
     global post_info, driver_sessions
     
     if not settings.SOURCE_CHAT_ID:
@@ -29,7 +36,7 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not message:
         return
 
-    # Check if message comes from the correct group/channel
+    # Verificar se a mensagem vem do grupo/canal correto
     effective_chat_id = str(update.effective_chat.id)
     sender_chat_id = str(message.sender_chat.id) if message.sender_chat else None
 
@@ -39,16 +46,16 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     message_id = message.message_id
     message_text = message.text or message.caption or ""
 
-    logger.info(f"Processing message {message_id}: {message_text[:50]}...")
+    logger.info(f"Processando mensagem {message_id}: {message_text[:50]}...")
 
-    # Extract ASIN and source if this is a product post
+    # Extrair ASIN e fonte se este for um post de produto
     asin = extract_asin_from_text(message_text)
     
     if asin:
         source = extract_source_from_text(message_text)
-        logger.info(f"Post with ASIN found: {asin}, Source: {source}")
+        logger.info(f"Post com ASIN encontrado: {asin}, Fonte: {source}")
         
-        # Store original post with ASIN, Source and timestamp
+        # Armazenar post original com ASIN, Fonte e timestamp
         post_info[str(message_id)] = {
             "asin": asin,
             "source": source,
@@ -56,126 +63,263 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         }
         save_post_info(post_info)
     
-    # Check if this is a comment on a tracked post
+    # Verificar se este é um comentário em um post rastreado
     elif message.reply_to_message:
         replied_message = message.reply_to_message
         replied_message_id = str(replied_message.message_id)
 
-        # Check if original post is tracked
+        # Verificar se o post original é rastreado
         if replied_message_id in post_info:
             asin = post_info[replied_message_id]["asin"]
             source = post_info[replied_message_id]["source"]
             comment = message_text.strip()
             
-            logger.info(f"Comment identified for ASIN {asin}: {comment}")
-            logger.info(f"Source from original post: {source}")
+            logger.info(f"Comentário identificado para ASIN {asin}: {comment}")
+            logger.info(f"Fonte do post original: {source}")
             
-            # Extract price from comment
+            # Verificar comando DELETE
+            if re.search(r'\bDELETE\b', comment, re.IGNORECASE):
+                logger.info(f"🗑️ Comando DELETE detectado para ASIN {asin}")
+                await handle_delete_comment(context, asin, source, comment)
+                return
+            
+            # Extrair preço do comentário
             price = extract_price_from_comment(comment)
             
-            # Use source as account identifier if it exists in our accounts
+            # Usar fonte como identificador de conta se existir em nossas contas
             account_identifier = None
             if source in settings.KEEPA_ACCOUNTS:
                 account_identifier = source
-                logger.info(f"Using source as account identifier: {account_identifier}")
+                logger.info(f"Usando fonte como identificador de conta: {account_identifier}")
             else:
-                # If source is not a valid account, check if there's a third part in the comment
+                # Se a fonte não for uma conta válida, verificar se há uma terceira parte no comentário
                 parts = comment.strip().split(',')
                 if len(parts) >= 3:
                     potential_account = parts[2].strip()
                     if potential_account in settings.KEEPA_ACCOUNTS:
                         account_identifier = potential_account
-                        logger.info(f"Using comment part as account identifier: {account_identifier}")
+                        logger.info(f"Usando parte do comentário como identificador de conta: {account_identifier}")
             
-            # If still no valid account, use default
+            # Se ainda não tiver uma conta válida, usar a padrão
             if not account_identifier:
                 account_identifier = settings.DEFAULT_KEEPA_ACCOUNT
-                logger.info(f"No valid account found, using default: {account_identifier}")
+                logger.info(f"Nenhuma conta válida encontrada, usando a padrão: {account_identifier}")
             
             if price:
-                logger.info(f"Price extracted from comment: {price}")
-                
-                # Update price on Keepa
-                update_success = False
-                driver = None
-                
-                try:
-                    # Always initialize a new driver for each price update
-                    # This ensures a clean session each time
-                    driver = initialize_driver(account_identifier)
-                    login_success = login_to_keepa(driver, account_identifier)
-                    
-                    if login_success:
-                        update_success = update_keepa_product(driver, asin, price)
-                        if update_success:
-                            logger.info(f"✅ ASIN {asin} successfully updated on Keepa with price {price} using account {account_identifier}")
-                            
-                            # Notify admin
-                            if settings.ADMIN_ID:
-                                await context.bot.send_message(
-                                    chat_id=settings.ADMIN_ID,
-                                    text=f"✅ ASIN {asin} updated with price {price} using account {account_identifier}"
-                                )
-                        else:
-                            logger.error(f"❌ Failed to update ASIN {asin} on Keepa")
-                            
-                            # Notify admin
-                            if settings.ADMIN_ID:
-                                await context.bot.send_message(
-                                    chat_id=settings.ADMIN_ID,
-                                    text=f"❌ Failed to update ASIN {asin} on Keepa using account {account_identifier}"
-                                )
-                    else:
-                        logger.error(f"❌ Failed to login to Keepa with account {account_identifier}")
-                        
-                        # Notify admin
-                        if settings.ADMIN_ID:
-                            await context.bot.send_message(
-                                chat_id=settings.ADMIN_ID,
-                                text=f"❌ Failed to login to Keepa with account {account_identifier}"
-                            )
-                except Exception as e:
-                    logger.error(f"❌ Error updating price on Keepa: {str(e)}")
-                    
-                    # Notify admin
-                    if settings.ADMIN_ID:
-                        await context.bot.send_message(
-                            chat_id=settings.ADMIN_ID,
-                            text=f"❌ Error updating price on Keepa with account {account_identifier}: {str(e)}"
-                        )
-                finally:
-                    # Important: Always quit the driver to release resources
-                    if driver:
-                        try:
-                            driver.quit()
-                            logger.info(f"Chrome driver session closed for account {account_identifier}")
-                        except Exception as e:
-                            logger.error(f"Error closing Chrome driver: {str(e)}")
-                
-                # Format message as requested: "ASIN, Comment, Source"
-                result_message = f"{asin}, {comment}, {source}"
-                
-                # Send to destination group
-                try:
-                    if settings.DESTINATION_CHAT_ID:
-                        await context.bot.send_message(
-                            chat_id=settings.DESTINATION_CHAT_ID,
-                            text=result_message
-                        )
-                        logger.info(f"Information sent to chat {settings.DESTINATION_CHAT_ID}")
-                except Exception as e:
-                    logger.error(f"Error sending message to destination group: {e}")
-                    if settings.ADMIN_ID:
-                        await context.bot.send_message(
-                            chat_id=settings.ADMIN_ID,
-                            text=f"❌ Error sending message to destination group: {e}"
-                        )
+                logger.info(f"Preço extraído do comentário: {price}")
+                await handle_price_update(context, asin, source, comment, price, account_identifier)
             else:
-                logger.warning(f"⚠️ Could not extract price from comment: {comment}")
+                logger.warning(f"⚠️ Não foi possível extrair preço do comentário: {comment}")
                 
-                # Notify admin
+                # Notificar administrador
                 if settings.ADMIN_ID:
                     await context.bot.send_message(
                         chat_id=settings.ADMIN_ID,
-                        text=f"⚠️ Could not extract price from comment for ASIN {asin}: {comment}"
+                        text=f"⚠️ Não foi possível extrair preço do comentário para ASIN {asin}: {comment}"
                     )
+
+async def handle_price_update(context, asin, source, comment, price, account_identifier):
+    """
+    Gerenciar atualização de preço no Keepa
+    
+    Args:
+        context: Contexto do Telegram
+        asin: ASIN do produto
+        source: Identificador da fonte
+        comment: Comentário do usuário
+        price: Preço extraído
+        account_identifier: Identificador da conta a ser usada
+    """
+    update_success = False
+    driver = None
+    
+    try:
+        # Sempre inicializar um novo driver para cada atualização de preço
+        # Isso garante uma sessão limpa a cada vez
+        driver = initialize_driver(account_identifier)
+        login_success = login_to_keepa(driver, account_identifier)
+        
+        if login_success:
+            update_success = update_keepa_product(driver, asin, price)
+            if update_success:
+                logger.info(f"✅ ASIN {asin} atualizado com sucesso no Keepa com preço {price} usando conta {account_identifier}")
+                
+                # Notificar administrador
+                if settings.ADMIN_ID:
+                    await context.bot.send_message(
+                        chat_id=settings.ADMIN_ID,
+                        text=f"✅ ASIN {asin} atualizado com preço {price} usando conta {account_identifier}"
+                    )
+            else:
+                logger.error(f"❌ Falha ao atualizar ASIN {asin} no Keepa")
+                
+                # Notificar administrador
+                if settings.ADMIN_ID:
+                    await context.bot.send_message(
+                        chat_id=settings.ADMIN_ID,
+                        text=f"❌ Falha ao atualizar ASIN {asin} no Keepa usando conta {account_identifier}"
+                    )
+        else:
+            logger.error(f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}")
+            
+            # Notificar administrador
+            if settings.ADMIN_ID:
+                await context.bot.send_message(
+                    chat_id=settings.ADMIN_ID,
+                    text=f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}"
+                )
+    except Exception as e:
+        logger.error(f"❌ Erro ao atualizar preço no Keepa: {str(e)}")
+        
+        # Notificar administrador
+        if settings.ADMIN_ID:
+            await context.bot.send_message(
+                chat_id=settings.ADMIN_ID,
+                text=f"❌ Erro ao atualizar preço no Keepa com a conta {account_identifier}: {str(e)}"
+            )
+    finally:
+        # Importante: Sempre fechar o driver para liberar recursos
+        if driver:
+            try:
+                driver.quit()
+                logger.info(f"Sessão do driver Chrome fechada para a conta {account_identifier}")
+            except Exception as e:
+                logger.error(f"Erro ao fechar o driver Chrome: {str(e)}")
+    
+    # Formatar e enviar a mensagem informativa para o canal de destino
+    formatted_message = format_destination_message(
+        asin=asin,
+        comment=comment,
+        source=source,
+        price=price,
+        action="update",
+        success=update_success
+    )
+    
+    # Enviar para o grupo de destino
+    try:
+        if settings.DESTINATION_CHAT_ID:
+            await context.bot.send_message(
+                chat_id=settings.DESTINATION_CHAT_ID,
+                text=formatted_message,
+                parse_mode=ParseMode.MARKDOWN,
+                disable_web_page_preview=True
+            )
+            logger.info(f"Informações detalhadas enviadas para o chat {settings.DESTINATION_CHAT_ID}")
+    except Exception as e:
+        logger.error(f"Erro ao enviar mensagem para o grupo de destino: {e}")
+        if settings.ADMIN_ID:
+            await context.bot.send_message(
+                chat_id=settings.ADMIN_ID,
+                text=f"❌ Erro ao enviar mensagem para o grupo de destino: {e}"
+            )
+
+async def handle_delete_comment(context, asin, source, comment):
+    """
+    Gerenciar solicitação de exclusão de rastreamento no Keepa
+    
+    Args:
+        context: Contexto do Telegram
+        asin: ASIN do produto
+        source: Identificador da fonte
+        comment: Comentário do usuário
+    """
+    account_identifier = None
+    delete_success = False
+    driver = None
+    
+    # Usar fonte como identificador de conta se existir em nossas contas
+    if source in settings.KEEPA_ACCOUNTS:
+        account_identifier = source
+        logger.info(f"Usando fonte como identificador de conta para exclusão: {account_identifier}")
+    else:
+        # Se a fonte não for uma conta válida, verificar se há uma terceira parte no comentário
+        parts = comment.strip().split(',')
+        if len(parts) >= 3:
+            potential_account = parts[2].strip()
+            if potential_account in settings.KEEPA_ACCOUNTS:
+                account_identifier = potential_account
+                logger.info(f"Usando parte do comentário como identificador de conta para exclusão: {account_identifier}")
+    
+    # Se ainda não tiver uma conta válida, usar a padrão
+    if not account_identifier:
+        account_identifier = settings.DEFAULT_KEEPA_ACCOUNT
+        logger.info(f"Nenhuma conta válida encontrada para exclusão, usando a padrão: {account_identifier}")
+    
+    try:
+        # Inicializar um novo driver
+        driver = initialize_driver(account_identifier)
+        login_success = login_to_keepa(driver, account_identifier)
+        
+        if login_success:
+            delete_success = delete_keepa_tracking(driver, asin)
+            if delete_success:
+                logger.info(f"✅ Rastreamento do ASIN {asin} excluído com sucesso usando conta {account_identifier}")
+                
+                # Notificar administrador
+                if settings.ADMIN_ID:
+                    await context.bot.send_message(
+                        chat_id=settings.ADMIN_ID,
+                        text=f"✅ Rastreamento do ASIN {asin} excluído usando conta {account_identifier}"
+                    )
+            else:
+                logger.error(f"❌ Falha ao excluir rastreamento do ASIN {asin}")
+                
+                # Notificar administrador
+                if settings.ADMIN_ID:
+                    await context.bot.send_message(
+                        chat_id=settings.ADMIN_ID,
+                        text=f"❌ Falha ao excluir rastreamento do ASIN {asin} usando conta {account_identifier}"
+                    )
+        else:
+            logger.error(f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}")
+            
+            # Notificar administrador
+            if settings.ADMIN_ID:
+                await context.bot.send_message(
+                    chat_id=settings.ADMIN_ID,
+                    text=f"❌ Falha ao fazer login no Keepa com a conta {account_identifier} para exclusão"
+                )
+    except Exception as e:
+        logger.error(f"❌ Erro ao excluir rastreamento no Keepa: {str(e)}")
+        
+        # Notificar administrador
+        if settings.ADMIN_ID:
+            await context.bot.send_message(
+                chat_id=settings.ADMIN_ID,
+                text=f"❌ Erro ao excluir rastreamento no Keepa com a conta {account_identifier}: {str(e)}"
+            )
+    finally:
+        # Sempre fechar o driver para liberar recursos
+        if driver:
+            try:
+                driver.quit()
+                logger.info(f"Sessão do driver Chrome fechada para a conta {account_identifier}")
+            except Exception as e:
+                logger.error(f"Erro ao fechar o driver Chrome: {str(e)}")
+    
+    # Formatar e enviar a mensagem informativa para o canal de destino
+    formatted_message = format_destination_message(
+        asin=asin,
+        comment=comment,
+        source=source,
+        action="delete",
+        success=delete_success
+    )
+    
+    # Enviar para o grupo de destino
+    try:
+        if settings.DESTINATION_CHAT_ID:
+            await context.bot.send_message(
+                chat_id=settings.DESTINATION_CHAT_ID,
+                text=formatted_message,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            logger.info(f"Informações de exclusão enviadas para o chat {settings.DESTINATION_CHAT_ID}")
+    except Exception as e:
+        logger.error(f"Erro ao enviar mensagem de exclusão para o grupo de destino: {e}")
+        if settings.ADMIN_ID:
+            await context.bot.send_message(
+                chat_id=settings.ADMIN_ID,
+                text=f"❌ Erro ao enviar mensagem de exclusão para o grupo de destino: {e}"
+            )

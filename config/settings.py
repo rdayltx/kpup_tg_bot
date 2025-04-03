@@ -5,40 +5,40 @@ from typing import Dict
 
 @dataclass
 class KeepaAccount:
-    """Keepa account credentials"""
+    """Credenciais da conta Keepa"""
     username: str
     password: str
 
 @dataclass
 class Settings:
-    """Application settings"""
+    """Configurações da aplicação"""
     TELEGRAM_BOT_TOKEN: str
     SOURCE_CHAT_ID: str
     DESTINATION_CHAT_ID: str
     ADMIN_ID: str
     UPDATE_EXISTING_TRACKING: bool
     DATA_FILE: str
-    # Dictionary of Keepa accounts keyed by identifier
+    # Dicionário de contas Keepa indexadas por identificador
     KEEPA_ACCOUNTS: Dict[str, KeepaAccount]
-    # Default account to use if no specific identifier is matched
+    # Conta padrão a ser usada se nenhum identificador específico for encontrado
     DEFAULT_KEEPA_ACCOUNT: str
 
 def load_settings() -> Settings:
-    """Load settings from environment variables"""
-    # Load variables from .env file
+    """Carregar configurações das variáveis de ambiente"""
+    # Carregar variáveis do arquivo .env
     load_dotenv(override=True)
     
-    # Default values
+    # Valores padrão
     data_file = "post_info.json"
     update_existing = True
     
-    # Load Keepa accounts
+    # Carregar contas Keepa
     keepa_accounts = {}
     
-    # Define account identifiers to look for
-    account_identifiers = ["Premium", "Meraxes", "Balerion", "Pro"]
+    # Definir identificadores de conta para procurar
+    account_identifiers = ["Premium", "Meraxes", "Balerion", "Cannibal", "Vermithor"]
     
-    # Load each account if defined in .env
+    # Carregar cada conta se definida no arquivo .env
     for identifier in account_identifiers:
         username_key = f"KEEPA_{identifier.upper()}_USERNAME"
         password_key = f"KEEPA_{identifier.upper()}_PASSWORD"
@@ -49,7 +49,7 @@ def load_settings() -> Settings:
         if username and password:
             keepa_accounts[identifier] = KeepaAccount(username=username, password=password)
     
-    # Set default account
+    # Definir conta padrão
     default_account = os.getenv("DEFAULT_KEEPA_ACCOUNT", "Premium")
     
     settings = Settings(
