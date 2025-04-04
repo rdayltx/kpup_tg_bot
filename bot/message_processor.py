@@ -142,19 +142,10 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def handle_price_update(context, asin, source, comment, price, account_identifier, user_name):
     """
     Gerenciar atualização de preço no Keepa
-    
-    Args:
-        context: Contexto do Telegram
-        asin: ASIN do produto
-        source: Identificador da fonte
-        comment: Comentário do usuário
-        price: Preço extraído
-        account_identifier: Identificador da conta a ser usada
-        user_name: Nome do usuário que fez a ação
     """
-    
     update_success = False
     driver = None
+    product_title = None
     
     try:
         # Tentar obter uma sessão de navegador do gerenciador
@@ -181,7 +172,7 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
             logger.info(f"Usando sessão existente para conta {account_identifier}")
         
         # Executar a atualização
-        update_success = update_keepa_product(driver, asin, price)
+        update_success, product_title = update_keepa_product(driver, asin, price)
         if update_success:
             logger.info(f"✅ ASIN {asin} atualizado com sucesso no Keepa com preço {price} usando conta {account_identifier}")
             
@@ -229,7 +220,8 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
         price=price,
         action="update",
         success=update_success,
-        user_name=user_name
+        user_name=user_name,
+        product_title=product_title
     )
     
     # Enviar para o grupo de destino
@@ -269,6 +261,7 @@ async def handle_delete_comment(context, asin, source, comment, user_name):
     delete_success = False
     driver = None
     session = None
+    product_title = None
     
     # Usar fonte como identificador de conta se existir em nossas contas
     if source in settings.KEEPA_ACCOUNTS:
@@ -313,7 +306,7 @@ async def handle_delete_comment(context, asin, source, comment, user_name):
             logger.info(f"Usando sessão existente para conta {account_identifier}")
         
         # Executar a exclusão
-        delete_success = delete_keepa_tracking(driver, asin)
+        delete_success, product_title = delete_keepa_tracking(driver, asin)
         if delete_success:
             logger.info(f"✅ Rastreamento do ASIN {asin} excluído com sucesso usando conta {account_identifier}")
             
@@ -359,7 +352,8 @@ async def handle_delete_comment(context, asin, source, comment, user_name):
         source=source,
         action="delete",
         success=delete_success,
-        user_name=user_name
+        user_name=user_name,
+        product_title=product_title
     )
     
     # Enviar para o grupo de destino

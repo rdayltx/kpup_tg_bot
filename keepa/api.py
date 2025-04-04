@@ -295,8 +295,12 @@ def login_to_keepa(driver, account_identifier=None):
 def update_keepa_product(driver, asin, price):
     """
     Atualizar preço-alvo para um produto no Keepa
+    
+    Returns:
+        tuple: (success, product_title)
     """
     logger.info(f"Atualizando produto ASIN {asin} com preço {price}")
+    product_title = None
     
     try:
         # Navegar para a página do produto
@@ -305,9 +309,38 @@ def update_keepa_product(driver, asin, price):
         # Verificar se a página carregou corretamente
         try:
             wait_for_element(driver, "#productInfoBox", timeout=10)
+            
+            # Tentar obter o título do produto
+            try:
+                title_element = wait_for_element(driver, "#productTitle", timeout=5)
+                product_title = title_element.text.strip()
+                logger.info(f"Título do produto obtido: {product_title}")
+            except:
+                # Tentar outro seletor se o primeiro falhar
+                try:
+                    title_element = wait_for_element(driver, ".productTitle", timeout=5)
+                    product_title = title_element.text.strip()
+                    logger.info(f"Título do produto obtido (seletor alternativo): {product_title}")
+                except:
+                    # Tenta navegar até a Amazon para obter o título
+                    try:
+                        current_url = driver.current_url
+                        amazon_url = f"https://www.amazon.com.br/dp/{asin}"
+                        driver.get(amazon_url)
+                        time.sleep(3)  # Esperar carregamento
+                        
+                        title_element = wait_for_element(driver, "#productTitle", timeout=5)
+                        product_title = title_element.text.strip()
+                        logger.info(f"Título obtido da Amazon: {product_title}")
+                        
+                        # Voltar para a página do Keepa
+                        driver.get(current_url)
+                        time.sleep(2)
+                    except Exception as e:
+                        logger.warning(f"Não foi possível obter o título do produto {asin}: {str(e)}")
         except TimeoutException:
             logger.warning(f"⚠️ A página do produto para {asin} não carregou corretamente")
-            return False
+            return False, None
 
         # Clicar na aba de rastreamento
         try:
@@ -315,7 +348,8 @@ def update_keepa_product(driver, asin, price):
             time.sleep(3)  # Esperar animações
         except Exception as e:
             logger.error(f"❌ Falha ao acessar a aba de rastreamento: {str(e)}")
-            return False
+            return False, product_title
+
 
         # Verificar se o rastreamento já existe
         if settings.UPDATE_EXISTING_TRACKING and check_element_exists(driver, "#updateTracking"):
@@ -343,13 +377,13 @@ def update_keepa_product(driver, asin, price):
                 driver.execute_script("arguments[0].click();", btn_submit)
                 logger.info(f"✅ Alerta atualizado com sucesso para {asin}")
                 time.sleep(4)
-                return True
+                return True, product_title
             except Exception as e:
                 logger.error(f"❌ Erro ao atualizar alerta: {str(e)}")
-                return False
+                return False, product_title
         elif check_element_exists(driver, "#updateTracking"):
             logger.info(f"✅ Alerta já existe para {asin}, mas não foi atualizado")
-            return True
+            return True, product_title
 
         # Criar novo alerta
         try:
@@ -374,18 +408,19 @@ def update_keepa_product(driver, asin, price):
             driver.execute_script("arguments[0].click();", btn_submit)
             logger.info(f"✅ Novo alerta criado para {asin}")
             time.sleep(4)  # Esperar confirmação
-            return True
+            return True, product_title
         except Exception as e:
             logger.error(f"❌ Erro ao criar alerta: {str(e)}")
-            return False
+            return False, product_title
 
     except Exception as e:
         logger.error(f"❌ Erro crítico: {str(e)}")
         screenshot_path = os.path.join(os.getcwd(), f"error_{asin}.png")
         driver.save_screenshot(screenshot_path)
-        return False
+        return False, product_title
     
     
+@sync_retry(max_attempts=3, delay=2)
 def delete_keepa_tracking(driver, asin):
     """
     Excluir rastreamento para um produto no Keepa
@@ -395,9 +430,10 @@ def delete_keepa_tracking(driver, asin):
         asin: ASIN do produto para excluir o rastreamento
         
     Returns:
-        bool: True se a exclusão for bem-sucedida, False caso contrário
+        tuple: (success, product_title) - Se a exclusão foi bem-sucedida e o título do produto (se disponível)
     """
     logger.info(f"🗑️ Tentando excluir rastreamento para ASIN {asin}")
+    product_title = None
     
     try:
         # Navegar para a página do produto
@@ -409,9 +445,38 @@ def delete_keepa_tracking(driver, asin):
                 EC.presence_of_element_located((By.ID, "productInfoBox"))
             )
             logger.info(f"Página do produto para {asin} carregada corretamente")
+            
+            # Tentar obter o título do produto
+            try:
+                title_element = wait_for_element(driver, "#productTitle", timeout=5)
+                product_title = title_element.text.strip()
+                logger.info(f"Título do produto obtido: {product_title}")
+            except:
+                # Tentar outro seletor se o primeiro falhar
+                try:
+                    title_element = wait_for_element(driver, ".productTitle", timeout=5)
+                    product_title = title_element.text.strip()
+                    logger.info(f"Título do produto obtido (seletor alternativo): {product_title}")
+                except:
+                    # Tenta navegar até a Amazon para obter o título
+                    try:
+                        current_url = driver.current_url
+                        amazon_url = f"https://www.amazon.com.br/dp/{asin}"
+                        driver.get(amazon_url)
+                        time.sleep(3)  # Esperar carregamento
+                        
+                        title_element = wait_for_element(driver, "#productTitle", timeout=5)
+                        product_title = title_element.text.strip()
+                        logger.info(f"Título obtido da Amazon: {product_title}")
+                        
+                        # Voltar para a página do Keepa
+                        driver.get(current_url)
+                        time.sleep(2)
+                    except Exception as e:
+                        logger.warning(f"Não foi possível obter o título do produto {asin}: {str(e)}")
         except TimeoutException:
             logger.warning(f"⚠️ A página do produto para {asin} não carregou corretamente")
-            return False
+            return False, None
 
         # Clicar na aba de rastreamento
         try:
@@ -423,12 +488,12 @@ def delete_keepa_tracking(driver, asin):
             logger.info("Aba de rastreamento aberta")
         except Exception as e:
             logger.error(f"❌ Falha ao acessar a aba de rastreamento: {str(e)}")
-            return False
+            return False, product_title
 
         # Verificar se o rastreamento existe (botão deleteTracking deve estar presente)
         if not check_element_exists(driver, "#deleteTracking"):
             logger.warning(f"⚠️ Nenhum rastreamento encontrado para ASIN {asin}")
-            return False
+            return False, product_title
         
         # Rastreamento existe, tentar excluir
         logger.info("Rastreamento existe, tentando excluir")
@@ -443,17 +508,17 @@ def delete_keepa_tracking(driver, asin):
             # Usamos um timeout curto porque esperamos que não encontre o elemento
             if check_element_exists(driver, "#deleteTracking", timeout=2):
                 logger.warning(f"⚠️ Botão de exclusão ainda presente após clicar, a exclusão pode ter falhado")
-                return False
+                return False, product_title
             else:
                 logger.info(f"✅ Rastreamento excluído com sucesso para ASIN {asin} (botão de exclusão não mais presente)")
-                return True
+                return True, product_title
                 
         except Exception as e:
             logger.error(f"❌ Erro ao clicar no botão de exclusão: {str(e)}")
-            return False
+            return False, product_title
             
     except Exception as e:
         logger.error(f"❌ Erro crítico durante exclusão: {str(e)}")
         screenshot_path = f"delete_error_{asin}.png"
         driver.save_screenshot(screenshot_path)
-        return False
+        return False, product_title
