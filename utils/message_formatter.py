@@ -13,7 +13,7 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 settings = load_settings()
 
-def format_destination_message(asin, comment, source, price=None, action="update", success=True):
+def format_destination_message(asin, comment, source, price=None, action="update", success=True, user_name="Desconhecido"):
     """
     Formatar uma mensagem mais informativa para o canal de destino
     
@@ -24,6 +24,7 @@ def format_destination_message(asin, comment, source, price=None, action="update
         price (str, opcional): Preço extraído
         action (str): Ação realizada (atualização/exclusão)
         success (bool): Se a ação foi bem-sucedida
+        user_name (str): Nome do usuário que fez a ação
         
     Returns:
         str: Mensagem formatada
@@ -48,11 +49,9 @@ def format_destination_message(asin, comment, source, price=None, action="update
     
     # Formatar a mensagem
     message = (
-        f"*{asin}* - {action_desc}\n"
-        f"👤 Conta: *{source}*\n"
-        f"🛒 [Amazon]({amazon_url}) | 📊 [Keepa]({keepa_url})\n"
-        f"💬 Comentário: {comment}"
-        
+        f"{action_desc} para *{asin}* da conta: *{source}*\n"
+        f"Por: *{user_name}* | Usando: {comment}\n"
+        f"{amazon_url}" 
     )
     
     return message

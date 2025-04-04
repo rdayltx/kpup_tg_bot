@@ -36,6 +36,25 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not message:
         return
 
+    # Obter informações do usuário que enviou a mensagem
+    user_name = None
+    if message.from_user:
+        # Priorizar nome completo, depois username, depois ID
+        if message.from_user.first_name:
+            user_name = message.from_user.first_name
+            if message.from_user.last_name:
+                user_name += f" {message.from_user.last_name}"
+        elif message.from_user.username:
+            user_name = f"@{message.from_user.username}"
+        else:
+            user_name = f"ID:{message.from_user.id}"
+    else:
+        # Se for mensagem de canal ou chat, pegar o título
+        if message.sender_chat:
+            user_name = message.sender_chat.title or f"Canal:{message.sender_chat.id}"
+        else:
+            user_name = "Desconhecido"
+
     # Verificar se a mensagem vem do grupo/canal correto
     effective_chat_id = str(update.effective_chat.id)
     sender_chat_id = str(message.sender_chat.id) if message.sender_chat else None
@@ -76,11 +95,12 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
             logger.info(f"Comentário identificado para ASIN {asin}: {comment}")
             logger.info(f"Fonte do post original: {source}")
+            logger.info(f"Usuário que enviou o comentário: {user_name}")
             
             # Verificar comando DELETE
             if re.search(r'\bDELETE\b', comment, re.IGNORECASE):
                 logger.info(f"🗑️ Comando DELETE detectado para ASIN {asin}")
-                await handle_delete_comment(context, asin, source, comment)
+                await handle_delete_comment(context, asin, source, comment, user_name)
                 return
             
             # Extrair preço do comentário
@@ -107,7 +127,7 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             
             if price:
                 logger.info(f"Preço extraído do comentário: {price}")
-                await handle_price_update(context, asin, source, comment, price, account_identifier)
+                await handle_price_update(context, asin, source, comment, price, account_identifier, user_name)
             else:
                 logger.warning(f"⚠️ Não foi possível extrair preço do comentário: {comment}")
                 
@@ -119,7 +139,7 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     )
 
 @async_retry(max_attempts=3, delay=5, backoff=2, jitter=0.1)
-async def handle_price_update(context, asin, source, comment, price, account_identifier):
+async def handle_price_update(context, asin, source, comment, price, account_identifier, user_name):
     """
     Gerenciar atualização de preço no Keepa
     
@@ -130,7 +150,9 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
         comment: Comentário do usuário
         price: Preço extraído
         account_identifier: Identificador da conta a ser usada
+        user_name: Nome do usuário que fez a ação
     """
+    
     update_success = False
     driver = None
     
@@ -206,7 +228,8 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
         source=source,
         price=price,
         action="update",
-        success=update_success
+        success=update_success,
+        user_name=user_name
     )
     
     # Enviar para o grupo de destino
@@ -230,7 +253,7 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
     return update_success
 
 @async_retry(max_attempts=3, delay=5, backoff=2, jitter=0.1)
-async def handle_delete_comment(context, asin, source, comment):
+async def handle_delete_comment(context, asin, source, comment, user_name):
     """
     Gerenciar solicitação de exclusão de rastreamento no Keepa
     
@@ -239,7 +262,9 @@ async def handle_delete_comment(context, asin, source, comment):
         asin: ASIN do produto
         source: Identificador da fonte
         comment: Comentário do usuário
+        user_name: Nome do usuário que fez a ação
     """
+    
     account_identifier = None
     delete_success = False
     driver = None
@@ -333,7 +358,8 @@ async def handle_delete_comment(context, asin, source, comment):
         comment=comment,
         source=source,
         action="delete",
-        success=delete_success
+        success=delete_success,
+        user_name=user_name
     )
     
     # Enviar para o grupo de destino
@@ -342,7 +368,8 @@ async def handle_delete_comment(context, asin, source, comment):
             await context.bot.send_message(
                 chat_id=settings.DESTINATION_CHAT_ID,
                 text=formatted_message,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.MARKDOWN,
+                disable_web_page_preview=True
             )
             logger.info(f"Informações de exclusão enviadas para o chat {settings.DESTINATION_CHAT_ID}")
     except Exception as e:
