@@ -71,13 +71,15 @@ def main() -> None:
     logger.info("Aplicação do Telegram inicializada")
     
     # Definir função de desligamento
-    async def shutdown():
+    async def shutdown_event(app):
         """Função para limpeza ao desligar a aplicação"""
         browser_manager.close_all_sessions()
         logger.info("Todas as sessões de navegador foram fechadas")
     
-    # Registrar a função de desligamento
-    application.add_shutdown_handler(shutdown)
+    # A maneira correta de adicionar um handler de desligamento
+    application.add_handler(
+        ApplicationHandlerStop(callback=shutdown_event)
+    )
     
     # Configurar manipuladores
     setup_handlers(application)
@@ -93,6 +95,6 @@ def main() -> None:
     # Iniciar polling
     logger.info("Bot iniciado. Ouvindo por atualizações...")
     application.run_polling()
-
+    
 if __name__ == "__main__":
     main()
