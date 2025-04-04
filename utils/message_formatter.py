@@ -38,7 +38,7 @@ def format_destination_message(asin, comment, source, price=None, action="update
     if action == "update":
         action_desc = f"{status_emoji} Atualização"
         if price:
-            action_desc += f" para R$ {price}"
+            action_desc += f" de preço R$ {price}"
     elif action == "delete":
         action_desc = f"{status_emoji} Rastreamento deletado"
     else:
@@ -61,11 +61,11 @@ def format_destination_message(asin, comment, source, price=None, action="update
     # Formatar a mensagem completa
     message = (
         f"{title_part}"
-        f"{action_desc} para *{asin}*\n"
+        f"{action_desc}\n"
+        f"ASIN: *{asin}*\n"
         f"Por: *{user_name}*\n"
         f"Conta: *{source}*\n"
         f"[Amazon]({amazon_url}) | [Keepa]({keepa_url})\n"
-        f"💬 _Comentário: {comment}_"
     )
     
     return message
