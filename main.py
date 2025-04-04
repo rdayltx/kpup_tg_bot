@@ -70,17 +70,6 @@ def main() -> None:
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
     logger.info("Aplicação do Telegram inicializada")
     
-    # Definir função de desligamento
-    async def shutdown_event(app):
-        """Função para limpeza ao desligar a aplicação"""
-        browser_manager.close_all_sessions()
-        logger.info("Todas as sessões de navegador foram fechadas")
-    
-    # A maneira correta de adicionar um handler de desligamento
-    application.add_handler(
-        ApplicationHandlerStop(callback=shutdown_event)
-    )
-    
     # Configurar manipuladores
     setup_handlers(application)
     logger.info("Manipuladores configurados com sucesso")
