@@ -48,54 +48,52 @@ def extract_price_from_comment(comment):
     Extrair preço do texto do comentário
     
     Procura por padrões como "R$ 99,99", "99.99", "2.672,10", etc.
-    Adiciona ".00" para números inteiros.
+    Normaliza para o formato com ponto decimal.
     """
     if not comment:
         return None
-        
-    # Padrões para valores decimais com vírgula (formato brasileiro)
-    decimal_patterns_comma = [
+    
+    logger.info(f"Tentando extrair preço do comentário: '{comment}'")
+    
+    # Primeiro tenta extrair qualquer número do texto
+    price_patterns = [
+        # Formato brasileiro com vírgula como decimal e possível ponto como separador de milhar
         r'R\$\s*([\d\.]+,\d+)',  # R$ 2.672,10 ou R$ 99,99
-        r'([\d\.]+,\d+)\s*reais',  # 2.672,10 reais ou 99,99 reais
-        r'([\d\.]+,\d+)',  # 2.672,10 ou 99,99 (genérico)
-    ]
-    
-    # Padrões para valores decimais com ponto
-    decimal_patterns_dot = [
+        r'([\d\.]+,\d+)',  # 2.672,10 ou 99,99 (sem R$)
+        
+        # Formato com ponto como decimal
         r'R\$\s*(\d+\.\d+)',  # R$ 99.99
-        r'(\d+\.\d+)\s*reais',  # 99.99 reais
-        r'(\d+\.\d+)',  # 99.99 (genérico)
+        r'(\d+\.\d+)',  # 99.99 (sem R$)
+        
+        # Números inteiros
+        r'R\$\s*(\d+)',  # R$ 99
+        r'(\d+)',  # 99 (sem R$)
     ]
     
-    # Padrões para valores inteiros
-    integer_patterns = [
-        r'R\$\s*(\d+)(?![,.]\d)',  # R$ 99 (sem decimal)
-        r'(\d+)\s*reais(?![,.]\d)',  # 99 reais (sem decimal)
-        r'(?<!\d[,.])(\d+)(?![,.]\d)',  # 99 (inteiro genérico)
-    ]
-    
-    # Verificar primeiro padrões decimais com vírgula
-    for pattern in decimal_patterns_comma:
+    for pattern in price_patterns:
         match = re.search(pattern, comment)
         if match:
             price_str = match.group(1)
-            # Remover todos os pontos (separadores de milhar) e substituir vírgula por ponto
-            price = price_str.replace('.', '').replace(',', '.')
-            return price
+            logger.info(f"Padrão de preço encontrado: '{price_str}'")
+            
+            # Se tiver vírgula, é formato brasileiro
+            if ',' in price_str:
+                # Remover pontos (separadores de milhar) e substituir vírgula por ponto
+                normalized_price = price_str.replace('.', '').replace(',', '.')
+                logger.info(f"Preço normalizado (formato BR): '{normalized_price}'")
+                return normalized_price
+            
+            # Se já tiver ponto, já está no formato correto
+            elif '.' in price_str:
+                logger.info(f"Preço já no formato correto: '{price_str}'")
+                return price_str
+            
+            # Se for número inteiro, adicionar .00
+            else:
+                logger.info(f"Preço inteiro normalizado: '{price_str}.00'")
+                return price_str + ".00"
     
-    # Em seguida, verificar padrões decimais com ponto
-    for pattern in decimal_patterns_dot:
-        match = re.search(pattern, comment)
-        if match:
-            return match.group(1)  # Já está no formato com ponto decimal
-    
-    # Por fim, verificar padrões inteiros
-    for pattern in integer_patterns:
-        match = re.search(pattern, comment)
-        if match:
-            return match.group(1) + ".00"  # Adicionar ".00" para valores inteiros
-    
-    # Se nenhum padrão corresponder
+    logger.warning(f"Nenhum padrão de preço encontrado em: '{comment}'")
     return None
 
 def extract_account_identifier(comment):

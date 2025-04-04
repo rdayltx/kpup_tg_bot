@@ -299,8 +299,12 @@ def update_keepa_product(driver, asin, price):
     Returns:
         tuple: (success, product_title)
     """
-    logger.info(f"Atualizando produto ASIN {asin} com preço {price}")
+    logger.info(f"Atualizando produto ASIN {asin} com preço {price} (tipo: {type(price).__name__})")
     product_title = None
+    
+    # Garantir que o preço seja uma string
+    if not isinstance(price, str):
+        price = str(price)
     
     try:
         # Navegar para a página do produto

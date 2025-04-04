@@ -106,6 +106,25 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             # Extrair preço do comentário
             price = extract_price_from_comment(comment)
             
+            if price:
+                logger.info(f"Preço extraído do comentário: {price} (tipo: {type(price).__name__})")
+                
+                # Garantir formato correto do preço (número com ponto decimal)
+                try:
+                    # Verificar se é convertível para float
+                    float_price = float(price)
+                    # Converter de volta para string com 2 casas decimais
+                    price = f"{float_price:.2f}"
+                    logger.info(f"Preço normalizado: {price}")
+                except ValueError:
+                    logger.error(f"Preço extraído não é um número válido: {price}")
+                    if settings.ADMIN_ID:
+                        await context.bot.send_message(
+                            chat_id=settings.ADMIN_ID,
+                            text=f"⚠️ Preço extraído não é válido para ASIN {asin}: {price}"
+                        )
+                    return False
+            
             # Usar fonte como identificador de conta se existir em nossas contas
             account_identifier = None
             if source in settings.KEEPA_ACCOUNTS:
