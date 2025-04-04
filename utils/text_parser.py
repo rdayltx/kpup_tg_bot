@@ -93,6 +93,44 @@ def extract_price_from_comment(comment):
                 logger.info(f"Preço inteiro normalizado: '{price_str}.00'")
                 return price_str + ".00"
     
+    # Se ainda não encontrou, procurar por padrões específicos no início do comentário (ASIN, preço)
+    parts = comment.strip().split(',', 2)
+    if len(parts) >= 2:
+        # O segundo item deve ser o preço
+        price_part = parts[1].strip()
+        logger.info(f"Tentando extrair preço da segunda parte do comentário: '{price_part}'")
+        
+        # Tentar converter diretamente
+        try:
+            # Remover tudo que não é dígito, ponto ou vírgula
+            price_part = re.sub(r'[^\d\.,]', '', price_part)
+            
+            # Se tiver vírgula, é formato brasileiro
+            if ',' in price_part:
+                normalized_price = price_part.replace('.', '').replace(',', '.')
+                
+                # Verificar se é um número válido
+                float(normalized_price)  # Isso vai lançar ValueError se não for válido
+                
+                logger.info(f"Preço extraído da segunda parte: '{normalized_price}'")
+                return normalized_price
+            
+            # Se já tiver ponto, já está no formato correto
+            elif '.' in price_part:
+                # Verificar se é um número válido
+                float(price_part)  # Isso vai lançar ValueError se não for válido
+                
+                logger.info(f"Preço extraído da segunda parte (formato com ponto): '{price_part}'")
+                return price_part
+            
+            # Se for apenas dígitos, adicionar .00
+            elif price_part.isdigit():
+                logger.info(f"Preço inteiro extraído da segunda parte: '{price_part}.00'")
+                return price_part + ".00"
+            
+        except ValueError:
+            logger.warning(f"Não foi possível converter para número: '{price_part}'")
+    
     logger.warning(f"Nenhum padrão de preço encontrado em: '{comment}'")
     return None
 

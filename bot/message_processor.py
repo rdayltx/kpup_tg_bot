@@ -115,6 +115,9 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     float_price = float(price)
                     # Converter de volta para string com 2 casas decimais
                     price = f"{float_price:.2f}"
+                    # Garantir que usa . como separador decimal (não ,)
+                    price = price.replace(",", ".")
+                    
                     logger.info(f"Preço normalizado: {price}")
                 except ValueError:
                     logger.error(f"Preço extraído não é um número válido: {price}")
@@ -165,6 +168,7 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
     update_success = False
     driver = None
     product_title = None
+    session = None
     
     try:
         # Tentar obter uma sessão de navegador do gerenciador
