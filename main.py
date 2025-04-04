@@ -11,6 +11,7 @@ from telegram.ext import Application
 from utils.logger import setup_logging, get_logger
 from utils.backup import create_backup, auto_cleanup_backups
 from utils.missing_products import retrieve_missing_products
+from keepa.browser_session_manager import browser_manager
 
 # Configurar logging aprimorado
 setup_logging(console_output=True, file_output=True)
@@ -68,6 +69,15 @@ def main() -> None:
     # Criar aplicação
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
     logger.info("Aplicação do Telegram inicializada")
+    
+    # Definir função de desligamento
+    async def shutdown():
+        """Função para limpeza ao desligar a aplicação"""
+        browser_manager.close_all_sessions()
+        logger.info("Todas as sessões de navegador foram fechadas")
+    
+    # Registrar a função de desligamento
+    application.add_shutdown_handler(shutdown)
     
     # Configurar manipuladores
     setup_handlers(application)

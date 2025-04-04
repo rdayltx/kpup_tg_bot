@@ -75,7 +75,16 @@ def initialize_driver(account_identifier=None):
     # Isso evita o erro "diretório de dados do usuário já está em uso"
     unique_id = f"{session_id}-{uuid.uuid4().hex[:8]}"
     chrome_data_dir = os.getenv("CHROME_USER_DATA_DIR", "/tmp/chrome-data")
-    unique_data_dir = f"{chrome_data_dir}-{unique_id}"
+    
+    # Criar diretório específico por conta para manter as sessões organizadas
+    if account_identifier:
+        # Diretório baseado no identificador de conta para persistência entre execuções
+        chrome_data_dir = os.path.join("/app/chrome-sessions", account_identifier)
+        os.makedirs(chrome_data_dir, exist_ok=True)
+        logger.info(f"Usando diretório de dados Chrome para conta: {account_identifier} em {chrome_data_dir}")
+    else:
+        # Diretório único temporário para sessões anônimas
+        chrome_data_dir = f"{chrome_data_dir}-{unique_id}"
     
     # Configurar opções do Chrome
     chrome_options = webdriver.ChromeOptions()
@@ -84,9 +93,8 @@ def initialize_driver(account_identifier=None):
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     
-    # Usar o diretório de dados único
-    chrome_options.add_argument(f"--user-data-dir={unique_data_dir}")
-    logger.info(f"Usando diretório de dados Chrome único: {unique_data_dir}")
+    # Usar o diretório de dados
+    chrome_options.add_argument(f"--user-data-dir={chrome_data_dir}")
     
     # Configurações adicionais para evitar detecção
     chrome_options.add_argument("--window-size=1920,1080")

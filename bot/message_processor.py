@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from datetime import datetime
 import re
 from telegram import Update
@@ -8,11 +9,10 @@ from config.settings import load_settings
 from data.data_manager import load_post_info, save_post_info
 from utils.text_parser import extract_asin_from_text, extract_source_from_text, extract_price_from_comment
 from keepa.browser import initialize_driver
-from keepa.api import login_to_keepa, update_keepa_product
+from keepa.api import login_to_keepa, update_keepa_product, delete_keepa_tracking
 from utils.logger import get_logger
-
-# Importar a nova função de exclusão de rastreamento
-from keepa.api import delete_keepa_tracking
+from utils.retry import async_retry
+from keepa.browser_session_manager import browser_manager
 
 # Importar o formatador de mensagens aprimorado
 from utils.message_formatter import format_destination_message
@@ -118,6 +118,7 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         text=f"⚠️ Não foi possível extrair preço do comentário para ASIN {asin}: {comment}"
                     )
 
+@async_retry(max_attempts=3, delay=5, backoff=2, jitter=0.1)
 async def handle_price_update(context, asin, source, comment, price, account_identifier):
     """
     Gerenciar atualização de preço no Keepa
@@ -134,40 +135,50 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
     driver = None
     
     try:
-        # Sempre inicializar um novo driver para cada atualização de preço
-        # Isso garante uma sessão limpa a cada vez
-        driver = initialize_driver(account_identifier)
-        login_success = login_to_keepa(driver, account_identifier)
-        
-        if login_success:
-            update_success = update_keepa_product(driver, asin, price)
-            if update_success:
-                logger.info(f"✅ ASIN {asin} atualizado com sucesso no Keepa com preço {price} usando conta {account_identifier}")
-                
-                # Notificar administrador
+        # Tentar obter uma sessão de navegador do gerenciador
+        session = await browser_manager.get_session(account_identifier)
+        if not session:
+            logger.error(f"❌ Não foi possível obter uma sessão válida para a conta {account_identifier}")
+            
+            # Fallback para o método antigo se o gerenciador falhar
+            logger.info(f"Tentando método alternativo com um novo driver para {account_identifier}")
+            driver = initialize_driver(account_identifier)
+            login_success = login_to_keepa(driver, account_identifier)
+            
+            if not login_success:
+                logger.error(f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}")
                 if settings.ADMIN_ID:
                     await context.bot.send_message(
                         chat_id=settings.ADMIN_ID,
-                        text=f"✅ ASIN {asin} atualizado com preço {price} usando conta {account_identifier}"
+                        text=f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}"
                     )
-            else:
-                logger.error(f"❌ Falha ao atualizar ASIN {asin} no Keepa")
-                
-                # Notificar administrador
-                if settings.ADMIN_ID:
-                    await context.bot.send_message(
-                        chat_id=settings.ADMIN_ID,
-                        text=f"❌ Falha ao atualizar ASIN {asin} no Keepa usando conta {account_identifier}"
-                    )
+                return False
         else:
-            logger.error(f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}")
+            # Usar o driver da sessão
+            driver = session.driver
+            logger.info(f"Usando sessão existente para conta {account_identifier}")
+        
+        # Executar a atualização
+        update_success = update_keepa_product(driver, asin, price)
+        if update_success:
+            logger.info(f"✅ ASIN {asin} atualizado com sucesso no Keepa com preço {price} usando conta {account_identifier}")
             
             # Notificar administrador
             if settings.ADMIN_ID:
                 await context.bot.send_message(
                     chat_id=settings.ADMIN_ID,
-                    text=f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}"
+                    text=f"✅ ASIN {asin} atualizado com preço {price} usando conta {account_identifier}"
                 )
+        else:
+            logger.error(f"❌ Falha ao atualizar ASIN {asin} no Keepa")
+            
+            # Notificar administrador
+            if settings.ADMIN_ID:
+                await context.bot.send_message(
+                    chat_id=settings.ADMIN_ID,
+                    text=f"❌ Falha ao atualizar ASIN {asin} no Keepa usando conta {account_identifier}"
+                )
+                
     except Exception as e:
         logger.error(f"❌ Erro ao atualizar preço no Keepa: {str(e)}")
         
@@ -177,9 +188,11 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
                 chat_id=settings.ADMIN_ID,
                 text=f"❌ Erro ao atualizar preço no Keepa com a conta {account_identifier}: {str(e)}"
             )
+        # Repassar a exceção para o mecanismo de retry
+        raise
     finally:
-        # Importante: Sempre fechar o driver para liberar recursos
-        if driver:
+        # Só fechar o driver se criamos um novo (não fechamos o driver gerenciado pelo SessionManager)
+        if driver and not session:
             try:
                 driver.quit()
                 logger.info(f"Sessão do driver Chrome fechada para a conta {account_identifier}")
@@ -213,7 +226,10 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
                 chat_id=settings.ADMIN_ID,
                 text=f"❌ Erro ao enviar mensagem para o grupo de destino: {e}"
             )
+    
+    return update_success
 
+@async_retry(max_attempts=3, delay=5, backoff=2, jitter=0.1)
 async def handle_delete_comment(context, asin, source, comment):
     """
     Gerenciar solicitação de exclusão de rastreamento no Keepa
@@ -227,6 +243,7 @@ async def handle_delete_comment(context, asin, source, comment):
     account_identifier = None
     delete_success = False
     driver = None
+    session = None
     
     # Usar fonte como identificador de conta se existir em nossas contas
     if source in settings.KEEPA_ACCOUNTS:
@@ -247,38 +264,48 @@ async def handle_delete_comment(context, asin, source, comment):
         logger.info(f"Nenhuma conta válida encontrada para exclusão, usando a padrão: {account_identifier}")
     
     try:
-        # Inicializar um novo driver
-        driver = initialize_driver(account_identifier)
-        login_success = login_to_keepa(driver, account_identifier)
-        
-        if login_success:
-            delete_success = delete_keepa_tracking(driver, asin)
-            if delete_success:
-                logger.info(f"✅ Rastreamento do ASIN {asin} excluído com sucesso usando conta {account_identifier}")
-                
-                # Notificar administrador
+        # Tentar obter uma sessão de navegador do gerenciador
+        session = await browser_manager.get_session(account_identifier)
+        if not session:
+            logger.error(f"❌ Não foi possível obter uma sessão válida para a conta {account_identifier}")
+            
+            # Fallback para o método antigo
+            logger.info(f"Tentando método alternativo com um novo driver para {account_identifier}")
+            driver = initialize_driver(account_identifier)
+            login_success = login_to_keepa(driver, account_identifier)
+            
+            if not login_success:
+                logger.error(f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}")
                 if settings.ADMIN_ID:
                     await context.bot.send_message(
                         chat_id=settings.ADMIN_ID,
-                        text=f"✅ Rastreamento do ASIN {asin} excluído usando conta {account_identifier}"
+                        text=f"❌ Falha ao fazer login no Keepa com a conta {account_identifier} para exclusão"
                     )
-            else:
-                logger.error(f"❌ Falha ao excluir rastreamento do ASIN {asin}")
-                
-                # Notificar administrador
-                if settings.ADMIN_ID:
-                    await context.bot.send_message(
-                        chat_id=settings.ADMIN_ID,
-                        text=f"❌ Falha ao excluir rastreamento do ASIN {asin} usando conta {account_identifier}"
-                    )
+                return False
         else:
-            logger.error(f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}")
+            # Usar o driver da sessão
+            driver = session.driver
+            logger.info(f"Usando sessão existente para conta {account_identifier}")
+        
+        # Executar a exclusão
+        delete_success = delete_keepa_tracking(driver, asin)
+        if delete_success:
+            logger.info(f"✅ Rastreamento do ASIN {asin} excluído com sucesso usando conta {account_identifier}")
             
             # Notificar administrador
             if settings.ADMIN_ID:
                 await context.bot.send_message(
                     chat_id=settings.ADMIN_ID,
-                    text=f"❌ Falha ao fazer login no Keepa com a conta {account_identifier} para exclusão"
+                    text=f"✅ Rastreamento do ASIN {asin} excluído usando conta {account_identifier}"
+                )
+        else:
+            logger.error(f"❌ Falha ao excluir rastreamento do ASIN {asin}")
+            
+            # Notificar administrador
+            if settings.ADMIN_ID:
+                await context.bot.send_message(
+                    chat_id=settings.ADMIN_ID,
+                    text=f"❌ Falha ao excluir rastreamento do ASIN {asin} usando conta {account_identifier}"
                 )
     except Exception as e:
         logger.error(f"❌ Erro ao excluir rastreamento no Keepa: {str(e)}")
@@ -289,9 +316,11 @@ async def handle_delete_comment(context, asin, source, comment):
                 chat_id=settings.ADMIN_ID,
                 text=f"❌ Erro ao excluir rastreamento no Keepa com a conta {account_identifier}: {str(e)}"
             )
+        # Repassar a exceção para o mecanismo de retry
+        raise
     finally:
-        # Sempre fechar o driver para liberar recursos
-        if driver:
+        # Só fechar o driver se criamos um novo (não fechamos o driver gerenciado pelo SessionManager)
+        if driver and not session:
             try:
                 driver.quit()
                 logger.info(f"Sessão do driver Chrome fechada para a conta {account_identifier}")
@@ -323,3 +352,5 @@ async def handle_delete_comment(context, asin, source, comment):
                 chat_id=settings.ADMIN_ID,
                 text=f"❌ Erro ao enviar mensagem de exclusão para o grupo de destino: {e}"
             )
+    
+    return delete_success

@@ -8,6 +8,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from config.settings import load_settings, KeepaAccount
+from utils.retry import sync_retry
 
 from utils.logger import get_logger
 
@@ -290,6 +291,7 @@ def login_to_keepa(driver, account_identifier=None):
         driver.save_screenshot("login_error.png")
         return False
 
+@sync_retry(max_attempts=3, delay=2)
 def update_keepa_product(driver, asin, price):
     """
     Atualizar preço-alvo para um produto no Keepa
