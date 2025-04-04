@@ -47,17 +47,24 @@ def extract_price_from_comment(comment):
     """
     Extrair preço do texto do comentário
     
-    Procura por padrões como "R$ 99,99", "99.99", etc.
+    Procura por padrões como "R$ 99,99", "99.99", "2.672,10", etc.
     Adiciona ".00" para números inteiros.
     """
     if not comment:
         return None
         
-    # Padrões comuns de preço para valores decimais
-    decimal_patterns = [
-        r'R\$\s*(\d+[,.]\d+)',  # R$ 99,99 ou R$ 99.99
-        r'(\d+[,.]\d+)\s*reais',  # 99,99 reais ou 99.99 reais
-        r'(\d+[,.]\d+)',  # 99,99 ou 99.99 (genérico)
+    # Padrões para valores decimais com vírgula (formato brasileiro)
+    decimal_patterns_comma = [
+        r'R\$\s*([\d\.]+,\d+)',  # R$ 2.672,10 ou R$ 99,99
+        r'([\d\.]+,\d+)\s*reais',  # 2.672,10 reais ou 99,99 reais
+        r'([\d\.]+,\d+)',  # 2.672,10 ou 99,99 (genérico)
+    ]
+    
+    # Padrões para valores decimais com ponto
+    decimal_patterns_dot = [
+        r'R\$\s*(\d+\.\d+)',  # R$ 99.99
+        r'(\d+\.\d+)\s*reais',  # 99.99 reais
+        r'(\d+\.\d+)',  # 99.99 (genérico)
     ]
     
     # Padrões para valores inteiros
@@ -67,14 +74,22 @@ def extract_price_from_comment(comment):
         r'(?<!\d[,.])(\d+)(?![,.]\d)',  # 99 (inteiro genérico)
     ]
     
-    # Verificar padrões decimais primeiro
-    for pattern in decimal_patterns:
+    # Verificar primeiro padrões decimais com vírgula
+    for pattern in decimal_patterns_comma:
         match = re.search(pattern, comment)
         if match:
-            price = match.group(1).replace(',', '.')  # Normalizar para formato com ponto
+            price_str = match.group(1)
+            # Remover todos os pontos (separadores de milhar) e substituir vírgula por ponto
+            price = price_str.replace('.', '').replace(',', '.')
             return price
     
-    # Então verificar padrões inteiros
+    # Em seguida, verificar padrões decimais com ponto
+    for pattern in decimal_patterns_dot:
+        match = re.search(pattern, comment)
+        if match:
+            return match.group(1)  # Já está no formato com ponto decimal
+    
+    # Por fim, verificar padrões inteiros
     for pattern in integer_patterns:
         match = re.search(pattern, comment)
         if match:
