@@ -7,7 +7,7 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from config.settings import load_settings
 from data.data_manager import load_post_info, save_post_info
-from utils.text_parser import extract_asin_from_text, extract_source_from_text, extract_price_from_comment
+from utils.text_parser import extract_asin_from_text, extract_source_from_text, extract_price_from_comment, should_ignore_message, should_ignore_message
 from keepa.browser import initialize_driver
 from keepa.api import login_to_keepa, update_keepa_product, delete_keepa_tracking
 from utils.logger import get_logger
@@ -55,6 +55,28 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             user_name = "Desconhecido"
 
+    # Verificar se a mensagem vem do grupo/canal correto
+    effective_chat_id = str(update.effective_chat.id)
+    sender_chat_id = str(message.sender_chat.id) if message.sender_chat else None
+
+    if effective_chat_id != settings.SOURCE_CHAT_ID and sender_chat_id != settings.SOURCE_CHAT_ID:
+        return
+
+    message_id = message.message_id
+    message_text = message.text or message.caption or ""
+
+    logger.info(f"Processando mensagem {message_id}: {message_text[:50]}...")
+    
+    # Verificar se a mensagem contém palavras-chave para ignorar
+    if should_ignore_message(message_text):
+        logger.info(f"Ignorando mensagem {message_id} pois contém palavras-chave para ignorar")
+        return
+    
+    # NOVA VERIFICAÇÃO: Ignorar mensagem se contiver palavras-chave para ignorar
+    if should_ignore_message(message_text):
+        logger.info(f"Ignorando mensagem {message_id} pois contém palavras-chave ignoradas")
+        return
+    
     # Verificar se a mensagem vem do grupo/canal correto
     effective_chat_id = str(update.effective_chat.id)
     sender_chat_id = str(message.sender_chat.id) if message.sender_chat else None
