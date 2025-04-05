@@ -45,7 +45,6 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
     added_count = 0
     processed_count = 0
     
-    return post_info
     try:
         # Iniciar o cliente
         await app.start()
@@ -343,6 +342,21 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
             logger.info("Cliente Pyrogram encerrado")
         except Exception as e:
             logger.error(f"Erro ao encerrar cliente Pyrogram: {str(e)}")
+    
+    # Salvar o dicionário post_info antes de ordenar
+    if new_posts:
+        post_info.update(new_posts)
+        save_post_info(post_info)
+        logger.info(f"Recuperação concluída: {added_count} posts adicionados (processadas {processed_count} mensagens)")
+    else:
+        logger.info(f"Nenhum post novo encontrado (processadas {processed_count} mensagens)")
+
+    # Ordenar o dicionário original pelas chaves numéricas
+    post_info = dict(sorted(post_info.items(), key=lambda x: int(x[0])))
+    
+    # Salvar novamente o dicionário ordenado (opcional, se quiser garantir que o arquivo reflita a ordenação)
+    save_post_info(post_info)
+    logger.info("Dicionário post_info ordenado pelas chaves numéricas e salvo")
     
     return post_info
 
