@@ -1,459 +1,292 @@
 import datetime
 import asyncio
-import time
-import random
 import os
 import json
 from utils.text_parser import extract_asin_from_text, extract_source_from_text
 from data.data_manager import load_post_info, save_post_info
 from utils.logger import get_logger
-from telegram.error import BadRequest, TelegramError
+import time
+import random
+
+# Importar Pyrogram
+from pyrogram import Client
+from pyrogram.errors import FloodWait, MessageIdInvalid, MessageNotModified
 
 logger = get_logger(__name__)
 
-async def retrieve_missing_products(bot, source_chat_id, post_info):
+# Função para recuperar mensagens usando a API de usuário Pyrogram
+async def recover_with_pyrogram(session_name, chat_id, post_info):
     """
-    Recuperar posts de produtos que podem estar faltando no post_info.json
-    usando uma abordagem de varredura ampla
+    Recuperar mensagens usando uma conta de usuário via Pyrogram
     
     Args:
-        bot: Instância do Bot do Telegram
+        session_name: Nome do arquivo de sessão Pyrogram
+        chat_id: ID do chat para recuperar mensagens
+        post_info: Dicionário atual de post_info
+        
+    Returns:
+        dict: Dicionário post_info atualizado
+    """
+    logger.info(f"Iniciando recuperação com Pyrogram usando sessão '{session_name}'")
+    
+    # Verificar se o arquivo de sessão existe
+    if not os.path.exists(f"{session_name}.session"):
+        logger.error(f"Arquivo de sessão '{session_name}.session' não encontrado")
+        return post_info
+    
+    # Criar cliente Pyrogram usando sessão existente
+    app = Client(session_name)
+    
+    # Dicionário para armazenar novos posts
+    new_posts = {}
+    added_count = 0
+    processed_count = 0
+    
+    try:
+        # Iniciar o cliente
+        await app.start()
+        logger.info("Cliente Pyrogram iniciado com sucesso")
+        
+        # Verificar se podemos acessar o chat
+        try:
+            chat = await app.get_chat(chat_id)
+            logger.info(f"Chat acessado: {chat.title}")
+        except Exception as e:
+            logger.error(f"Não foi possível acessar o chat {chat_id}: {str(e)}")
+            await app.stop()
+            return post_info
+        
+        # Encontrar o último ID conhecido
+        try:
+            existing_ids = [int(msg_id) for msg_id in post_info.keys() if msg_id.isdigit()]
+            latest_msg_id = max(existing_ids) if existing_ids else 0
+            oldest_msg_id = min(existing_ids) if existing_ids else 0
+            
+            # Conjunto de IDs já processados para evitar duplicações
+            processed_ids = set(existing_ids)
+            
+            logger.info(f"Último ID conhecido: {latest_msg_id}")
+            logger.info(f"ID mais antigo conhecido: {oldest_msg_id}")
+            logger.info(f"Total de {len(processed_ids)} mensagens já processadas")
+        except Exception as e:
+            logger.error(f"Erro ao processar IDs existentes: {str(e)}")
+            latest_msg_id = 0
+            oldest_msg_id = 0
+            processed_ids = set()
+        
+        # Modo de recuperação: tudo em um
+        # Vai buscar todas as mensagens recentes de uma vez
+        try:
+            logger.info("Iniciando recuperação completa do histórico recente")
+            
+            # Obter mensagens recentes (acima do último ID conhecido)
+            # Limitamos a 2000 mensagens para não sobrecarregar
+            max_msgs = 2000
+            msg_count = 0
+            
+            # Obter histórico do chat
+            async for message in app.get_chat_history(chat_id, limit=max_msgs):
+                msg_count += 1
+                processed_count += 1
+                
+                # Pular mensagens já processadas
+                if message.id in processed_ids:
+                    continue
+                
+                # Adicionar ao conjunto de processados
+                processed_ids.add(message.id)
+                
+                # Extrair texto da mensagem
+                message_text = message.text or message.caption or ""
+                
+                # Extrair ASIN e fonte
+                asin = extract_asin_from_text(message_text)
+                
+                if asin:
+                    source = extract_source_from_text(message_text)
+                    logger.info(f"Encontrado post com ASIN: {asin}, Fonte: {source}, ID: {message.id}")
+                    
+                    # Adicionar ao post_info
+                    timestamp = datetime.datetime.now().isoformat()
+                    if hasattr(message, 'date'):
+                        timestamp = message.date.isoformat()
+                    
+                    # Adicionar aos novos posts
+                    new_posts[str(message.id)] = {
+                        "asin": asin,
+                        "source": source,
+                        "timestamp": timestamp
+                    }
+                    added_count += 1
+                    
+                    # Salvar incrementalmente a cada 10 novos posts
+                    if added_count % 10 == 0:
+                        combined_post_info = {**post_info, **new_posts}
+                        save_post_info(combined_post_info)
+                        logger.info(f"Checkpoint: Salvos {added_count} posts até agora")
+                
+                # Exibir progresso a cada 100 mensagens
+                if msg_count % 100 == 0:
+                    logger.info(f"Progresso: {msg_count}/{max_msgs} mensagens processadas, {added_count} posts encontrados")
+            
+            logger.info(f"Recuperação completa: {msg_count} mensagens processadas, {added_count} posts encontrados")
+            
+            # Procurar mensagens em faixas específicas para preencher lacunas
+            # Definir faixas de IDs para verificar lacunas
+            if len(existing_ids) > 5:
+                # Ordenar IDs existentes
+                sorted_ids = sorted(existing_ids)
+                
+                # Identificar lacunas entre IDs consecutivos
+                gap_ranges = []
+                for i in range(len(sorted_ids) - 1):
+                    current = sorted_ids[i]
+                    next_id = sorted_ids[i + 1]
+                    
+                    # Se houver uma lacuna significativa
+                    if next_id - current > 30:
+                        # Registrar faixa para verificação
+                        gap_start = current + 1
+                        gap_end = next_id - 1
+                        gap_ranges.append((gap_start, gap_end))
+                
+                # Verificar até 5 lacunas principais
+                for idx, (start_id, end_id) in enumerate(gap_ranges[:5]):
+                    range_size = end_id - start_id + 1
+                    logger.info(f"Verificando lacuna {idx+1}/{len(gap_ranges[:5])}: IDs {start_id}-{end_id} ({range_size} mensagens)")
+                    
+                    # Se a lacuna for muito grande, verificar apenas uma amostra
+                    if range_size > 100:
+                        # Criar uma lista de IDs para verificar (até 100 amostras)
+                        sample_size = min(100, range_size)
+                        step = range_size // sample_size
+                        ids_to_check = list(range(start_id, end_id + 1, step))
+                    else:
+                        # Verificar todos os IDs na lacuna
+                        ids_to_check = list(range(start_id, end_id + 1))
+                    
+                    # Verificar cada ID
+                    gap_processed = 0
+                    gap_found = 0
+                    
+                    for msg_id in ids_to_check:
+                        # Pular se já foi processado
+                        if msg_id in processed_ids:
+                            continue
+                        
+                        try:
+                            # Tentar obter a mensagem específica
+                            message = await app.get_messages(chat_id, msg_id)
+                            
+                            if message and (message.text or message.caption):
+                                gap_processed += 1
+                                processed_count += 1
+                                
+                                # Adicionar ao conjunto de processados
+                                processed_ids.add(message.id)
+                                
+                                # Extrair ASIN e fonte
+                                message_text = message.text or message.caption or ""
+                                asin = extract_asin_from_text(message_text)
+                                
+                                if asin:
+                                    source = extract_source_from_text(message_text)
+                                    logger.info(f"Encontrado post em lacuna com ASIN: {asin}, Fonte: {source}, ID: {message.id}")
+                                    
+                                    # Adicionar ao post_info
+                                    timestamp = datetime.datetime.now().isoformat()
+                                    if hasattr(message, 'date'):
+                                        timestamp = message.date.isoformat()
+                                    
+                                    # Adicionar aos novos posts
+                                    new_posts[str(message.id)] = {
+                                        "asin": asin,
+                                        "source": source,
+                                        "timestamp": timestamp
+                                    }
+                                    added_count += 1
+                                    gap_found += 1
+                                    
+                                    # Salvar incrementalmente
+                                    if added_count % 10 == 0:
+                                        combined_post_info = {**post_info, **new_posts}
+                                        save_post_info(combined_post_info)
+                                        logger.info(f"Checkpoint: Salvos {added_count} posts no total")
+                            
+                            # Pausa curta para evitar flood
+                            await asyncio.sleep(0.05)
+                            
+                        except FloodWait as e:
+                            # Esperar o tempo recomendado pelo Telegram
+                            logger.warning(f"Rate limit atingido. Aguardando {e.x} segundos...")
+                            await asyncio.sleep(e.x)
+                        except (MessageIdInvalid, MessageNotModified):
+                            # Mensagem não existe ou não pode ser acessada
+                            pass
+                        except Exception as e:
+                            logger.warning(f"Erro ao obter mensagem {msg_id}: {str(e)}")
+                    
+                    logger.info(f"Lacuna {idx+1} verificada: {gap_processed} mensagens, {gap_found} posts encontrados")
+                
+                logger.info(f"Verificação de lacunas concluída: {added_count} posts encontrados no total")
+            
+        except FloodWait as e:
+            logger.warning(f"Rate limit atingido. Aguardando {e.x} segundos...")
+            await asyncio.sleep(e.x)
+        except Exception as e:
+            logger.error(f"Erro durante recuperação com Pyrogram: {str(e)}")
+        
+        # Adicionar todos os novos posts ao post_info
+        if new_posts:
+            post_info.update(new_posts)
+            save_post_info(post_info)
+            logger.info(f"Recuperação concluída: {added_count} posts adicionados (processadas {processed_count} mensagens)")
+        else:
+            logger.info(f"Nenhum post novo encontrado (processadas {processed_count} mensagens)")
+        
+    except Exception as e:
+        logger.error(f"Erro geral durante recuperação com Pyrogram: {str(e)}")
+    finally:
+        # Garantir que o cliente seja finalizado
+        try:
+            await app.stop()
+            logger.info("Cliente Pyrogram encerrado")
+        except Exception as e:
+            logger.error(f"Erro ao encerrar cliente Pyrogram: {str(e)}")
+    
+    return post_info
+
+# Versão compatível da função original para o bot usar
+async def retrieve_missing_products(bot, source_chat_id, post_info):
+    """
+    Recuperar posts de produtos que podem estar faltando.
+    Esta função agora usará Pyrogram em vez do método anterior.
+    
+    Args:
+        bot: Instância do Bot do Telegram (não usado nesta versão)
         source_chat_id: ID do chat de origem
         post_info: Dicionário atual de post_info
         
     Returns:
         dict: Dicionário post_info atualizado
     """
-    logger.info("Iniciando recuperação completa de publicações ausentes...")
+    logger.info("Iniciando recuperação de posts faltantes usando Pyrogram...")
     
-    # Converter source_chat_id para inteiro para comparações corretas
+    # Nome do arquivo de sessão 
+    session_name = "recovery_session"
+    
     try:
-        source_chat_id_int = int(source_chat_id)
-    except ValueError:
-        logger.error(f"ID de chat inválido: {source_chat_id}")
-        return post_info
-    
-    # Encontrar o ID de mensagem mais recente que conhecemos
-    try:
-        existing_ids = [int(msg_id) for msg_id in post_info.keys() if msg_id.isdigit()]
-        latest_msg_id = max(existing_ids) if existing_ids else 0
-        lowest_msg_id = min(existing_ids) if existing_ids else 0
-    except (ValueError, StopIteration):
-        logger.warning("Não foi possível determinar o ID da última mensagem, usando 0")
-        latest_msg_id = 0
-        lowest_msg_id = 0
-        
-    logger.info(f"ID da última mensagem rastreada: {latest_msg_id}")
-    logger.info(f"ID da mensagem mais antiga rastreada: {lowest_msg_id}")
-    
-    # Preparar a recuperação
-    new_posts = {}
-    added_count = 0
-    posts_examined = 0
-    asin_posts_found = 0
-    
-    # Limites de processamento
-    max_messages_per_run = 200  # Limite total de mensagens a verificar
-    
-    # Rastrear IDs já verificados para não repetir
-    checked_ids = set(existing_ids)
-    
-    # Verificar se já temos um arquivo de progresso
-    progress_file = "recovery_progress.json"
-    try:
-        if os.path.exists(progress_file):
-            with open(progress_file, "r") as f:
-                recovery_data = json.load(f)
-                
-            # Carregar progresso anterior
-            if "checked_ids" in recovery_data:
-                for id_str in recovery_data["checked_ids"]:
-                    checked_ids.add(int(id_str))
-                logger.info(f"Carregado progresso anterior: {len(checked_ids)} IDs já verificados")
+        # Executar recuperação com Pyrogram
+        updated_post_info = await recover_with_pyrogram(session_name, source_chat_id, post_info)
+        return updated_post_info
     except Exception as e:
-        logger.warning(f"Não foi possível carregar progresso anterior: {e}")
-    
-    # Criar lista de IDs a verificar em ordem estratégica
-    try:
-        # Primeiro: começar a partir do último ID conhecido e ir para cima
-        upper_range = range(latest_msg_id + 1, latest_msg_id + 500)
-        
-        # Segundo: verificar para baixo a partir do último ID
-        # Usamos uma faixa limitada para evitar processar mensagens muito antigas
-        lower_range = range(latest_msg_id - 1, max(0, latest_msg_id - 1000), -1)
-        
-        # Terceiro: verificar lacunas entre os IDs registrados
-        # Criar uma lista dos IDs que já temos, ordenados
-        existing_ids.sort()
-        gaps = []
-        
-        # Identificar lacunas grandes entre IDs consecutivos
-        for i in range(len(existing_ids) - 1):
-            current = existing_ids[i]
-            next_id = existing_ids[i + 1]
-            
-            if next_id - current > 5:  # Se houver uma lacuna de mais de 5 IDs
-                # Adicionar alguns IDs dessa lacuna
-                gap_start = current + 1
-                gap_end = next_id
-                sample_size = min(20, gap_end - gap_start)  # No máximo 20 amostras por lacuna
-                
-                # Selecionar amostras distribuídas pela lacuna
-                if sample_size > 0:
-                    step = (gap_end - gap_start) // sample_size
-                    if step < 1:
-                        step = 1
-                    gap_samples = range(gap_start, gap_end, step)
-                    gaps.extend(gap_samples)
-        
-        # Combinar todas as faixas
-        all_ids = list(upper_range) + list(lower_range) + gaps
-        
-        # Remover IDs já verificados
-        ids_to_check = [msg_id for msg_id in all_ids if msg_id not in checked_ids]
-        
-        # Limitar ao máximo permitido
-        ids_to_check = ids_to_check[:max_messages_per_run]
-        
-        logger.info(f"Preparados {len(ids_to_check)} IDs para verificação")
-        
-        # Dividir os IDs em lotes para processamento mais eficiente
-        batch_size = 10
-        batches = [ids_to_check[i:i + batch_size] for i in range(0, len(ids_to_check), batch_size)]
-        
-        # Processar cada lote
-        for batch_num, batch in enumerate(batches, 1):
-            if added_count >= 30:
-                logger.info(f"Atingido limite de 30 novos posts, pausando recuperação")
-                break
-                
-            logger.info(f"Processando lote {batch_num}/{len(batches)} ({len(batch)} IDs)")
-            
-            # Lista para armazenar mensagens obtidas neste lote
-            batch_messages = []
-            
-            # Tentar obter cada mensagem deste lote
-            for msg_id in batch:
-                try:
-                    # Marcar como verificado independentemente do resultado
-                    checked_ids.add(msg_id)
-                    
-                    # Tentar recuperar a mensagem
-                    message = await bot.forward_message(
-                        chat_id=source_chat_id_int,
-                        from_chat_id=source_chat_id_int,
-                        message_id=msg_id,
-                        disable_notification=True
-                    )
-                    
-                    # Adicionar à lista de mensagens do lote
-                    batch_messages.append((msg_id, message))
-                    posts_examined += 1
-                    
-                except Exception as e:
-                    # Mensagem não encontrada ou outro erro
-                    pass
-                
-                # Pausa breve entre requisições
-                await asyncio.sleep(0.2)
-            
-            # Processar mensagens recuperadas neste lote
-            for msg_id, message in batch_messages:
-                msg_id_str = str(msg_id)
-                
-                try:
-                    # Extrair texto da mensagem
-                    message_text = message.text or message.caption or ""
-                    
-                    # Extrair ASIN e fonte
-                    asin = extract_asin_from_text(message_text)
-                    
-                    if asin:
-                        asin_posts_found += 1
-                        source = extract_source_from_text(message_text)
-                        logger.info(f"Encontrado post ausente com ASIN: {asin}, Fonte: {source}, ID: {message.message_id}")
-                        
-                        # Adicionar ao post_info
-                        timestamp = datetime.datetime.now().isoformat()
-                        if hasattr(message, 'date'):
-                            if isinstance(message.date, datetime.datetime):
-                                timestamp = message.date.isoformat()
-                            else:
-                                try:
-                                    timestamp = datetime.datetime.fromtimestamp(message.date).isoformat()
-                                except:
-                                    pass
-                        
-                        # Adicionar aos novos posts
-                        new_posts[msg_id_str] = {
-                            "asin": asin,
-                            "source": source,
-                            "timestamp": timestamp
-                        }
-                        added_count += 1
-                        
-                        # Salvar incrementalmente
-                        if added_count % 5 == 0:
-                            combined = {**post_info, **new_posts}
-                            save_post_info(combined)
-                            logger.info(f"Checkpoint: Salvos {added_count} posts até agora")
-                except Exception as e:
-                    logger.warning(f"Erro ao processar mensagem {msg_id}: {e}")
-            
-            # Salvar o progresso da verificação regularmente
-            try:
-                progress_data = {
-                    "last_run": datetime.datetime.now().isoformat(),
-                    "checked_ids": list(map(str, checked_ids)),
-                    "posts_found": added_count
-                }
-                
-                with open(progress_file, "w") as f:
-                    json.dump(progress_data, f)
-            except Exception as e:
-                logger.warning(f"Não foi possível salvar progresso: {e}")
-            
-            # Pausa entre lotes
-            await asyncio.sleep(1)
-        
-        # Finalizar processamento
-        if new_posts:
-            # Adicionar todos os novos posts ao post_info
-            post_info.update(new_posts)
-            save_post_info(post_info)
-            logger.info(f"Adicionados {added_count} posts de produtos ausentes ao rastreamento (verificados {posts_examined} posts)")
-        else:
-            logger.info(f"Nenhum post novo adicionado (verificados {posts_examined} posts)")
-        
-        return post_info
-        
-    except Exception as e:
-        logger.error(f"Erro durante o processo de recuperação: {e}")
-        
-        # Salvar qualquer progresso feito até agora
-        if new_posts:
-            post_info.update(new_posts)
-            save_post_info(post_info)
-            logger.info(f"Salvos {len(new_posts)} posts encontrados antes do erro")
-        
+        logger.error(f"Erro na recuperação com Pyrogram: {str(e)}")
         return post_info
 
-# Função especial para recuperação intensiva
-async def perform_intensive_recovery(bot, source_chat_id, admin_id=None):
+# Comando para administrador iniciar recuperação manual
+async def start_recovery_command(update, context):
     """
-    Realizar uma recuperação intensiva do histórico, por faixas de IDs
-    
-    Args:
-        bot: Instância do Bot do Telegram
-        source_chat_id: ID do chat de origem
-        admin_id: ID do administrador para notificações
-    """
-    logger.info("Iniciando recuperação intensiva de mensagens")
-    
-    try:
-        source_chat_id_int = int(source_chat_id)
-    except ValueError:
-        logger.error(f"ID de chat inválido: {source_chat_id}")
-        return
-    
-    # Carregar dados atuais
-    post_info = load_post_info()
-    existing_ids = set(int(msg_id) for msg_id in post_info.keys() if msg_id.isdigit())
-    
-    # Criar faixas de IDs para verificação completa
-    ranges_to_check = [
-        (1, 300),         # Primeiras mensagens
-        (300, 600),       # Faixa 300-600
-        (600, 900),       # Faixa 600-900
-        (900, 1200),      # Faixa 900-1200
-        (1200, 1500),     # Faixa 1200-1500
-        (1500, 1800),     # Faixa 1500-1800
-        (1800, 2000)      # Faixa 1800-2000
-    ]
-    
-    # Arquivo de progresso específico para recuperação intensiva
-    progress_file = "intensive_recovery_progress.json"
-    completed_ranges = []
-    
-    # Carregar progresso anterior se existir
-    try:
-        if os.path.exists(progress_file):
-            with open(progress_file, "r") as f:
-                progress_data = json.load(f)
-                completed_ranges = progress_data.get("completed_ranges", [])
-                
-            logger.info(f"Carregado progresso anterior: {len(completed_ranges)} faixas já verificadas")
-    except Exception as e:
-        logger.warning(f"Não foi possível carregar progresso anterior: {e}")
-    
-    # Notificar o administrador sobre o início da recuperação
-    if admin_id:
-        try:
-            await bot.send_message(
-                chat_id=admin_id,
-                text=f"🔄 Iniciando recuperação intensiva do histórico.\nVerificando {len(ranges_to_check)} faixas de IDs."
-            )
-        except Exception:
-            pass
-    
-    # Processar cada faixa
-    total_found = 0
-    for i, (start_id, end_id) in enumerate(ranges_to_check):
-        # Pular faixas já verificadas
-        range_key = f"{start_id}-{end_id}"
-        if range_key in completed_ranges:
-            logger.info(f"Pulando faixa {range_key} (já verificada)")
-            continue
-        
-        logger.info(f"Processando faixa {i+1}/{len(ranges_to_check)}: {start_id} a {end_id}")
-        
-        # Notificar o administrador sobre a faixa atual
-        if admin_id:
-            try:
-                await bot.send_message(
-                    chat_id=admin_id,
-                    text=f"🔍 Verificando faixa {i+1}/{len(ranges_to_check)}: {start_id} a {end_id}"
-                )
-            except Exception:
-                pass
-        
-        # Contar novos posts nesta faixa
-        new_in_range = 0
-        
-        # Processar IDs em pequenos lotes
-        batch_size = 10
-        for batch_start in range(start_id, end_id, batch_size):
-            batch_end = min(batch_start + batch_size, end_id)
-            batch = list(range(batch_start, batch_end))
-            
-            # Filtrar IDs já conhecidos
-            batch = [msg_id for msg_id in batch if msg_id not in existing_ids]
-            
-            # Se não há IDs novos para verificar neste lote, pular
-            if not batch:
-                continue
-                
-            # Lista para armazenar mensagens obtidas neste lote
-            batch_messages = []
-            
-            # Tentar obter cada mensagem deste lote
-            for msg_id in batch:
-                try:
-                    # Tentar recuperar a mensagem
-                    message = await bot.forward_message(
-                        chat_id=source_chat_id_int,
-                        from_chat_id=source_chat_id_int,
-                        message_id=msg_id,
-                        disable_notification=True
-                    )
-                    
-                    # Adicionar à lista de mensagens do lote
-                    batch_messages.append((msg_id, message))
-                    
-                except Exception:
-                    # Mensagem não encontrada ou outro erro
-                    pass
-                
-                # Pausa breve entre requisições
-                await asyncio.sleep(0.2)
-            
-            # Processar mensagens recuperadas neste lote
-            for msg_id, message in batch_messages:
-                msg_id_str = str(msg_id)
-                
-                try:
-                    # Extrair texto da mensagem
-                    message_text = message.text or message.caption or ""
-                    
-                    # Extrair ASIN e fonte
-                    asin = extract_asin_from_text(message_text)
-                    
-                    if asin:
-                        source = extract_source_from_text(message_text)
-                        logger.info(f"Encontrado post ausente com ASIN: {asin}, Fonte: {source}, ID: {message.message_id}")
-                        
-                        # Adicionar ao post_info
-                        timestamp = datetime.datetime.now().isoformat()
-                        if hasattr(message, 'date'):
-                            if isinstance(message.date, datetime.datetime):
-                                timestamp = message.date.isoformat()
-                            else:
-                                try:
-                                    timestamp = datetime.datetime.fromtimestamp(message.date).isoformat()
-                                except:
-                                    pass
-                        
-                        # Adicionar ao post_info
-                        post_info[msg_id_str] = {
-                            "asin": asin,
-                            "source": source,
-                            "timestamp": timestamp
-                        }
-                        existing_ids.add(msg_id)
-                        total_found += 1
-                        new_in_range += 1
-                        
-                        # Salvar incrementalmente
-                        if total_found % 10 == 0:
-                            save_post_info(post_info)
-                            logger.info(f"Checkpoint: Salvos {total_found} posts no total")
-                except Exception as e:
-                    logger.warning(f"Erro ao processar mensagem {msg_id}: {e}")
-            
-            # Pausa entre lotes
-            await asyncio.sleep(1)
-        
-        # Marcar esta faixa como concluída
-        completed_ranges.append(range_key)
-        
-        # Atualizar o arquivo de progresso
-        try:
-            progress_data = {
-                "last_run": datetime.datetime.now().isoformat(),
-                "completed_ranges": completed_ranges,
-                "total_found": total_found
-            }
-            
-            with open(progress_file, "w") as f:
-                json.dump(progress_data, f)
-        except Exception as e:
-            logger.warning(f"Não foi possível salvar progresso: {e}")
-        
-        # Salvar após cada faixa
-        save_post_info(post_info)
-        logger.info(f"Faixa {start_id}-{end_id} concluída: {new_in_range} novos posts (total: {total_found})")
-        
-        # Notificar o administrador sobre o progresso
-        if admin_id:
-            try:
-                await bot.send_message(
-                    chat_id=admin_id,
-                    text=f"✅ Faixa {start_id}-{end_id} concluída: {new_in_range} novos posts\nTotal acumulado: {total_found} posts"
-                )
-            except Exception:
-                pass
-        
-        # Pausa entre faixas para evitar rate limiting
-        await asyncio.sleep(3)
-    
-    # Notificar conclusão da recuperação intensiva
-    logger.info(f"Recuperação intensiva concluída. Total de posts encontrados: {total_found}")
-    
-    if admin_id:
-        try:
-            await bot.send_message(
-                chat_id=admin_id,
-                text=f"✅ Recuperação intensiva concluída!\nTotal de posts encontrados: {total_found}"
-            )
-        except Exception:
-            pass
-    
-    return total_found
-
-# Adicionar comando para o admin para iniciar recuperação intensiva
-async def start_intensive_recovery_command(update, context):
-    """
-    Comando para iniciar o processo de recuperação intensiva
+    Comando para iniciar recuperação manual com Pyrogram
     """
     from config.settings import load_settings
     settings = load_settings()
@@ -462,15 +295,18 @@ async def start_intensive_recovery_command(update, context):
         await update.message.reply_text("Este comando é exclusivo para administradores.")
         return
     
-    await update.message.reply_text("🔄 Iniciando processo de recuperação intensiva do histórico. Isso pode levar tempo...")
+    await update.message.reply_text("🔄 Iniciando recuperação de mensagens usando Pyrogram. Isso pode levar algum tempo...")
+    
+    # Carregar dados atuais
+    post_info = load_post_info()
     
     try:
-        total_found = await perform_intensive_recovery(
-            context.bot,
-            settings.SOURCE_CHAT_ID,
-            settings.ADMIN_ID
-        )
+        # Executar recuperação com Pyrogram
+        updated_post_info = await recover_with_pyrogram("recovery_session", settings.SOURCE_CHAT_ID, post_info)
         
-        await update.message.reply_text(f"✅ Recuperação intensiva concluída! Foram encontrados {total_found} posts no total.")
+        # Contar novos posts
+        new_count = len(updated_post_info) - len(post_info)
+        
+        await update.message.reply_text(f"✅ Recuperação concluída! {new_count} novos posts encontrados.\nTotal atual: {len(updated_post_info)} posts.")
     except Exception as e:
-        await update.message.reply_text(f"❌ Erro durante a recuperação intensiva: {str(e)}")
+        await update.message.reply_text(f"❌ Erro durante a recuperação: {str(e)}")

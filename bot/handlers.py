@@ -17,7 +17,7 @@ from keepa.browser_session_manager import browser_manager
 from utils.backup import create_backup, list_backups, delete_backup, auto_cleanup_backups
 # Importar utilitário de retry
 from utils.retry import async_retry
-from utils.missing_products import start_intensive_recovery_command
+from utils.missing_products import start_recovery_command
 
 from utils.logger import get_logger
 
@@ -552,7 +552,7 @@ def setup_handlers(application):
         process_message
     ))
     
-    # Adicionar o comando de recuperação intensiva
-    application.add_handler(CommandHandler("recover_history", start_intensive_recovery_command))
+    # Adicionar o comando de recuperação com Pyrogram
+    application.add_handler(CommandHandler("recover", start_recovery_command))
     
     logger.info("Manipuladores configurados")
