@@ -49,96 +49,80 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
         # Iniciar o cliente
         await app.start()
         logger.info("Cliente Pyrogram iniciado com sucesso")
-        
-        # Tentar resolver o chat_id de várias maneiras diferentes
+
+        # Buscar o chat pelo nome em vez de tentar vários formatos de ID
         chat = None
         chat_id_to_use = None
-        
-        # Lista de formatos de ID para tentar
-        formats_to_try = [
-            int("-1002563291570"),  # Como int, formato original
-            int("2563291570"),      # Como int, sem o prefixo -100
-            "-1002563291570",       # Como string, formato original
-            "2563291570",           # Como string, sem prefixo
-            "-100" + "2563291570".lstrip("0")  # Formato alternativo
-        ]
-        
-        # Tentar resolver o chat de diferentes maneiras
-        for format_id in formats_to_try:
-            try:
-                logger.info(f"Tentando acessar o chat com formato de ID: {format_id}")
-                chat = await app.get_chat(format_id)
-                logger.info(f"Chat acessado com sucesso: {chat.title} (ID: {chat.id})")
-                chat_id_to_use = format_id
-                break
-            except Exception as e:
-                logger.warning(f"Formato {format_id} falhou: {str(e)}")
-        
-        # Se ainda não conseguimos acessar, tentar métodos alternativos
-        if not chat:
-            # Método alternativo: Usar o ID diretamente para get_messages ou get_history
-            logger.info("Tentando acessar mensagens diretamente...")
-            try:
-                # Tentar obter uma mensagem recente (ID arbitrário alto)
-                messages = await app.get_messages(-1002563291570, 1000)
-                if messages:
-                    logger.info(f"Mensagem acessada diretamente: {messages}")
-                    chat_id_to_use = -1002563291570
-                    # Agora podemos tentar acessar o chat novamente
-                    chat = await app.get_chat(chat_id_to_use)
-                    logger.info(f"Chat acessado após obter mensagem: {chat.title}")
-            except Exception as e:
-                logger.warning(f"Tentativa direta falhou: {str(e)}")
-        
-        # Segundo método alternativo: Usar o link de convite
-        if not chat:
-            invite_link = os.environ.get('CHAT_INVITE_LINK', 'https://t.me/+nv9ZJS7ADqQ1MzVh')
-            if invite_link:
+
+        try:
+            # Primeira tentativa: buscar o chat pelo título exato
+            target_chat_name = "chat do keepa do pobre"
+            
+            logger.info(f"Buscando chat pelo nome: '{target_chat_name}'")
+            
+            found_chat = False
+            async for dialog in app.get_dialogs():
+                if dialog.chat.title and dialog.chat.title == target_chat_name:
+                    logger.info(f"Chat encontrado pelo nome exato: {dialog.chat.title} (ID: {dialog.chat.id})")
+                    chat = dialog.chat
+                    chat_id_to_use = dialog.chat.id
+                    found_chat = True
+                    break
+            
+            # Se não encontrar pelo nome exato, procurar por substring
+            if not found_chat:
+                logger.info("Chat não encontrado pelo nome exato, procurando por substring...")
+                async for dialog in app.get_dialogs():
+                    if dialog.chat.title and "keepa do pobre" in dialog.chat.title.lower():
+                        logger.info(f"Chat encontrado por substring: {dialog.chat.title} (ID: {dialog.chat.id})")
+                        chat = dialog.chat
+                        chat_id_to_use = dialog.chat.id
+                        found_chat = True
+                        break
+            
+            # Se ainda não encontrou, procurar pelo ID exato
+            if not found_chat:
+                logger.info("Tentando pelo ID específico -1002563291570...")
                 try:
-                    logger.info(f"Tentando obter detalhes do chat via link de convite: {invite_link}")
-                    
-                    # Extrair o hash do convite do link
-                    invite_hash = invite_link.split('+')[-1]
-                    logger.info(f"Hash do convite: {invite_hash}")
-                    
-                    # Tentar obter o chat usando o hash
-                    # Primeiro tentar entrar (mesmo que já seja membro)
-                    try:
-                        await app.join_chat(invite_link)
-                        logger.info("Tentativa de entrar no chat enviada")
-                    except Exception as join_err:
-                        logger.warning(f"Erro ao entrar (pode já ser membro): {str(join_err)}")
-                    
-                    # Agora tentar obter informações do chat usando get_chat
-                    try:
-                        # Tentar obter o chat usando o hash do convite
-                        chat_info = await app.get_chat(invite_hash)
-                        logger.info(f"Chat obtido via hash: {chat_info.title} (ID: {chat_info.id})")
-                        chat = chat_info
-                        chat_id_to_use = chat_info.id
-                    except Exception as hash_err:
-                        logger.warning(f"Erro ao acessar via hash: {str(hash_err)}")
-                    
-                    # Se ainda não conseguimos, tentar usar diálogos para encontrar o chat
-                    if not chat:
-                        logger.info("Tentando encontrar o chat nos diálogos recentes...")
-                        async for dialog in app.get_dialogs():
-                            logger.info(f"Verificando diálogo: {dialog.chat.title} (ID: {dialog.chat.id})")
-                            if dialog.chat.type in ["supergroup", "channel"]:
-                                # Ver se o ID corresponde ao que estamos procurando
-                                if str(dialog.chat.id).endswith("2563291570"):
-                                    logger.info(f"Chat encontrado nos diálogos: {dialog.chat.title} (ID: {dialog.chat.id})")
-                                    chat = dialog.chat
-                                    chat_id_to_use = dialog.chat.id
-                                    break
-                except Exception as invite_err:
-                    logger.warning(f"Erro ao processar convite: {str(invite_err)}")
-        
-        # Se ainda não conseguimos acessar o chat
-        if not chat:
-            logger.error("Não foi possível acessar o chat por nenhum método.")
-            # Tente usar o ID original mesmo assim para o próximo passo
+                    hardcoded_id = -1002563291570
+                    dialog_chat = await app.get_chat(hardcoded_id)
+                    logger.info(f"Chat encontrado pelo ID hardcoded: {dialog_chat.title} (ID: {dialog_chat.id})")
+                    chat = dialog_chat
+                    chat_id_to_use = hardcoded_id
+                    found_chat = True
+                except Exception as e:
+                    logger.warning(f"Não foi possível acessar o chat pelo ID hardcoded: {str(e)}")
+            
+            # Se ainda não encontrou, procurar em todos os diálogos pelo ID que contém "2563291570"
+            if not found_chat:
+                logger.info("Procurando por ID que contenha '2563291570' em todos os diálogos...")
+                async for dialog in app.get_dialogs():
+                    if str(dialog.chat.id).find("2563291570") >= 0:
+                        logger.info(f"Chat encontrado pelo ID parcial: {dialog.chat.title} (ID: {dialog.chat.id})")
+                        chat = dialog.chat
+                        chat_id_to_use = dialog.chat.id
+                        found_chat = True
+                        break
+            
+            # Se ainda não encontrou, mas temos mensagens para continuar
+            if not found_chat and len(post_info) > 0:
+                logger.warning("Não foi possível acessar o chat por nome ou ID, mas temos mensagens existentes para continuar.")
+                chat_id_to_use = -1002563291570
+            
+            # Neste ponto, vamos tentar obter mensagens do chat
+            if chat_id_to_use:
+                logger.info(f"Usando ID final para histórico: {chat_id_to_use}")
+                
+                # ... resto do código para obter mensagens ...
+            else:
+                logger.error("Não foi possível identificar o chat por nenhum método.")
+                return post_info
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar chat: {str(e)}")
+            # Se tudo falhar mas temos um ID conhecido, tentar usar mesmo assim
             chat_id_to_use = -1002563291570
+            logger.info(f"Usando ID hardcoded como fallback: {chat_id_to_use}")
         
         # Neste ponto, vamos tentar obter mensagens do chat independentemente de termos conseguido obter os detalhes
         chat_id = chat_id_to_use
