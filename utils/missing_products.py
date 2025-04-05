@@ -40,20 +40,24 @@ async def retrieve_missing_products(bot, source_chat_id, post_info):
         
     logger.info(f"ID da última mensagem rastreada: {latest_msg_id}")
     
-    # Em vez de tentar obter mensagens anteriores, vamos verificar IDs específicos
-    # ao redor do último ID conhecido (os 20 mais recentes)
+    # Vamos verificar IDs específicos ao redor do último ID conhecido
+    # e também um intervalo adicional para trás para preencher lacunas
     try:
         added_count = 0
         
-        # Tentar IDs ao redor do último ID conhecido
-        # Vamos tentar 20 IDs acima e 20 abaixo para cobrir possíveis lacunas
-        start_id = max(1, latest_msg_id - 30)
+        # Verificar 30 publicações anteriores para preencher lacunas + intervalo ao redor do último ID
+        start_id = max(1, latest_msg_id - 100)  # Verificar até 100 IDs para trás para cobrir 30+ publicações
         end_id = latest_msg_id + 30
         
         logger.info(f"Verificando mensagens no intervalo de IDs: {start_id} a {end_id}")
         
         # Lista para armazenar progressivamente os novos posts encontrados
         new_posts = {}
+        
+        # Contador para publicações examinadas (independente se têm ASIN ou não)
+        posts_examined = 0
+        # Contador para publicações com ASIN encontradas
+        asin_posts_found = 0
         
         for msg_id in range(start_id, end_id + 1):
             msg_id_str = str(msg_id)
@@ -70,6 +74,9 @@ async def retrieve_missing_products(bot, source_chat_id, post_info):
                 )
                 
                 # Se chegou aqui, conseguimos obter a mensagem
+                # Incrementar contador de posts examinados
+                posts_examined += 1
+                
                 # Agora processamos seu conteúdo
                 message_text = message.text or message.caption or ""
                 
@@ -77,6 +84,7 @@ async def retrieve_missing_products(bot, source_chat_id, post_info):
                 asin = extract_asin_from_text(message_text)
                 
                 if asin:
+                    asin_posts_found += 1
                     source = extract_source_from_text(message_text)
                     logger.info(f"Encontrado post ausente com ASIN: {asin}, Fonte: {source}, ID: {message.message_id}")
                     
@@ -99,6 +107,12 @@ async def retrieve_missing_products(bot, source_chat_id, post_info):
                     }
                     added_count += 1
                     
+                    # Se já encontramos pelo menos 30 posts com ASIN, podemos parar a busca
+                    # se estivermos analisando mensagens antigas (antes do último_msg_id - 30)
+                    if asin_posts_found >= 30 and msg_id < (latest_msg_id - 30):
+                        logger.info(f"Encontrados {asin_posts_found} posts com ASIN. Parando busca de mensagens mais antigas.")
+                        break
+                    
                     # A cada 5 posts encontrados, salvar para evitar perda de dados em caso de erro
                     if added_count % 5 == 0:
                         # Adicionar os novos posts ao post_info e salvar
@@ -117,7 +131,9 @@ async def retrieve_missing_products(bot, source_chat_id, post_info):
         # Salvar apenas uma vez no final se houver alterações
         if added_count > 0:
             save_post_info(post_info)
-            logger.info(f"Adicionados {added_count} posts de produtos ausentes ao rastreamento")
+            logger.info(f"Adicionados {added_count} posts de produtos ausentes ao rastreamento (verificados {posts_examined} posts)")
+        else:
+            logger.info(f"Nenhum post novo adicionado (verificados {posts_examined} posts)")
         
         return post_info
         
