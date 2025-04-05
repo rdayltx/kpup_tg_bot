@@ -11,7 +11,7 @@ import random
 
 # Importar Pyrogram
 from pyrogram import Client
-from pyrogram.errors import FloodWait, MessageIdInvalid, MessageNotModified
+from pyrogram.errors import FloodWait, MessageIdInvalid, MessageNotModified, PeerIdInvalid
 
 logger = get_logger(__name__)
 
@@ -50,15 +50,74 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
         await app.start()
         logger.info("Cliente Pyrogram iniciado com sucesso")
         
-        # Verificar se podemos acessar o chat
+        # Lidar com o erro PEER_ID_INVALID
+        # Primeiro, tenta resolver o chat_id para um formato válido
         try:
-            chat = await app.get_chat(chat_id)
-            logger.info(f"Chat acessado: {chat.title}")
+            # Tente diferentes formatos do chat_id
+            chat_id_int = int(chat_id)
+            
+            # Verificar se o ID já tem o formato de supergrupo (-100...)
+            if not str(chat_id_int).startswith('-100'):
+                # Para canais e supergrupos, o formato deve ser -100 seguido do ID
+                if str(chat_id_int).startswith('-'):
+                    # Já é negativo, mas sem o prefixo 100
+                    chat_id_supergroup = int('-100' + str(chat_id_int)[1:])
+                else:
+                    # ID positivo, converter para formato de supergrupo
+                    chat_id_supergroup = int('-100' + str(chat_id_int))
+                
+                logger.info(f"Convertendo ID do chat {chat_id_int} para formato de supergrupo: {chat_id_supergroup}")
+                chat_id_to_use = chat_id_supergroup
+            else:
+                # Já está no formato correto
+                chat_id_to_use = chat_id_int
+                
+            # Tentar obter informações do chat
+            try:
+                chat = await app.get_chat(chat_id_to_use)
+                logger.info(f"Chat acessado: {chat.title}")
+                
+                # Usar o ID resolvido
+                chat_id = chat_id_to_use
+            except PeerIdInvalid:
+                # Ainda não conseguimos acessar, tentar formato alternativo
+                try:
+                    # Tentar como um nome de usuário se começar com @
+                    if isinstance(chat_id, str) and chat_id.startswith('@'):
+                        chat = await app.get_chat(chat_id)
+                        logger.info(f"Chat acessado via username: {chat.title}")
+                        chat_id = chat.id
+                    else:
+                        # Não conseguimos acessar o chat, tentar entrar/visualizar primeiro
+                        logger.warning(f"Não foi possível acessar o chat {chat_id}. A conta provavelmente não é membro. Tentando resolver esse problema.")
+                        
+                        # Se tivermos o link de convite, tentar usá-lo
+                        invite_link = os.environ.get('CHAT_INVITE_LINK', '')
+                        if invite_link:
+                            try:
+                                logger.info(f"Tentando entrar no chat usando link de convite: {invite_link}")
+                                await app.join_chat(invite_link)
+                                # Agora tenta acessar o chat novamente
+                                chat = await app.get_chat(chat_id_to_use)
+                                logger.info(f"Entrou e acessou o chat com sucesso: {chat.title}")
+                                chat_id = chat_id_to_use
+                            except Exception as join_err:
+                                logger.error(f"Não foi possível entrar no chat: {str(join_err)}")
+                                raise
+                        else:
+                            # Sem link de convite, não podemos resolver automaticamente
+                            logger.error(f"A conta não tem acesso ao chat {chat_id} e não foi fornecido um link de convite.")
+                            logger.error("Por favor, adicione a conta ao chat manualmente ou forneça CHAT_INVITE_LINK no ambiente.")
+                            raise PeerIdInvalid("A conta não tem acesso ao chat e não consegue resolver automaticamente.")
+                except Exception as chat_err:
+                    logger.error(f"Todas as tentativas de acessar o chat falharam: {str(chat_err)}")
+                    raise
         except Exception as e:
             logger.error(f"Não foi possível acessar o chat {chat_id}: {str(e)}")
             await app.stop()
             return post_info
         
+        # Se chegou aqui, conseguimos acessar o chat. Prosseguir com a recuperação...
         # Encontrar o último ID conhecido
         try:
             existing_ids = [int(msg_id) for msg_id in post_info.keys() if msg_id.isdigit()]
@@ -299,36 +358,6 @@ async def retrieve_missing_products(bot, source_chat_id, post_info):
         return updated_post_info
     except Exception as e:
         logger.error(f"Erro na recuperação com Pyrogram: {str(e)}")
-        return post_info
-
-# Função para recuperação usando arquivo de sessão (alternativa)
-async def recover_with_session_file(session_name, chat_id, post_info):
-    """Versão antiga mantida para compatibilidade se necessário"""
-    logger.info(f"Iniciando recuperação com Pyrogram usando sessão '{session_name}'")
-    
-    # Verificar se o arquivo de sessão existe
-    if not os.path.exists(f"{session_name}.session"):
-        logger.error(f"Arquivo de sessão '{session_name}.session' não encontrado")
-        return post_info
-    
-    try:
-        # Carregar configurações para obter api_id e api_hash
-        settings = load_settings()
-        api_id = os.environ.get('PYROGRAM_API_ID', settings.PYROGRAM_API_ID if hasattr(settings, 'PYROGRAM_API_ID') else None)
-        api_hash = os.environ.get('PYROGRAM_API_HASH', settings.PYROGRAM_API_HASH if hasattr(settings, 'PYROGRAM_API_HASH') else None)
-        
-        if not api_id or not api_hash:
-            logger.error("API ID e hash não configurados")
-            return post_info
-            
-        # Criar cliente Pyrogram usando sessão existente
-        app = Client(session_name, api_id=int(api_id), api_hash=api_hash)
-        
-        # Resto do código igual à outra função...
-        # (Implementação removida para brevidade - seria similar à função recover_with_pyrogram_string)
-        
-    except Exception as e:
-        logger.error(f"Erro ao inicializar recuperação com arquivo de sessão: {str(e)}")
         return post_info
 
 # Comando para administrador iniciar recuperação manual
