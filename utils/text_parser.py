@@ -16,7 +16,7 @@ def should_ignore_message(text):
     Returns:
         bool: True se a mensagem deve ser ignorada, False caso contrário
     """
-    ignore_keywords = ["recente", "marketplace"]
+    ignore_keywords = ["recente", "marketplace", "marktplace"]
     
     # Converter para lowercase para comparação insensível a maiúsculas/minúsculas
     lower_text = text.lower()
@@ -70,7 +70,7 @@ def extract_price_from_comment(comment):
     """
     Extrair preço do texto do comentário
     
-    Procura por padrões como "R$ 99,99", "99.99", "2.672,10", "1.100", etc.
+    Procura por padrões como "R$ 99,99", "99.99", "2.672,10", etc.
     Normaliza para o formato com ponto decimal.
     """
     if not comment:
@@ -83,10 +83,6 @@ def extract_price_from_comment(comment):
         # Formato brasileiro com vírgula como decimal e possível ponto como separador de milhar
         r'R\$\s*([\d\.]+,\d+)',  # R$ 2.672,10 ou R$ 99,99
         r'([\d\.]+,\d+)',  # 2.672,10 ou 99,99 (sem R$)
-        
-        # Números com ponto que podem ser separadores de milhar no formato brasileiro
-        r'R\$\s*([\d\.]+)(?!\d)',  # R$ 1.100 (sem casas decimais)
-        r'([\d\.]+)(?!\d)',  # 1.100 (sem R$ e sem casas decimais)
         
         # Formato com ponto como decimal
         r'R\$\s*(\d+\.\d+)',  # R$ 99.99
@@ -107,38 +103,13 @@ def extract_price_from_comment(comment):
             if ',' in price_str:
                 # Remover pontos (separadores de milhar) e substituir vírgula por ponto
                 normalized_price = price_str.replace('.', '').replace(',', '.')
-                logger.info(f"Preço normalizado (formato BR com vírgula): '{normalized_price}'")
+                logger.info(f"Preço normalizado (formato BR): '{normalized_price}'")
                 return normalized_price
             
-            # Se tiver ponto, precisamos determinar se é separador de milhar ou decimal
+            # Se já tiver ponto, já está no formato correto
             elif '.' in price_str:
-                # Contar dígitos após o último ponto
-                parts = price_str.split('.')
-                last_part = parts[-1]
-                
-                # Se o último ponto tiver 0, 1 ou 2 dígitos após ele, provavelmente é um decimal
-                if len(last_part) <= 2:
-                    logger.info(f"Interpretando ponto como decimal: '{price_str}'")
-                    return price_str
-                # Se tiver 3 dígitos após o último ponto, é provavelmente um separador de milhar brasileiro
-                else:
-                    # Precisamos verificar se existe mais de um ponto
-                    if len(parts) > 2:
-                        # Múltiplos pontos, provavelmente são todos separadores de milhar
-                        normalized_price = price_str.replace('.', '')
-                        logger.info(f"Preço com múltiplos pontos, tratando como separador de milhar: '{normalized_price}.00'")
-                        return normalized_price + ".00"
-                    else:
-                        # Verificar padrões específicos de valores comuns no Brasil
-                        # Se o valor for como 1.100, 1.200, etc. (x.y00)
-                        if len(price_str) >= 5 and re.match(r'\d+\.\d00$', price_str):
-                            normalized_price = price_str.replace('.', '')
-                            logger.info(f"Preço no formato brasileiro x.y00, tratando como separador de milhar: '{normalized_price}.00'")
-                            return normalized_price + ".00"
-                        # Assumindo que se houver mais de 2 dígitos após o ponto, é um separador de milhar
-                        normalized_price = price_str.replace('.', '')
-                        logger.info(f"Preço com 3+ dígitos após o ponto, tratando como separador de milhar: '{normalized_price}.00'")
-                        return normalized_price + ".00"
+                logger.info(f"Preço já no formato correto: '{price_str}'")
+                return price_str
             
             # Se for número inteiro, adicionar .00
             else:
@@ -167,25 +138,13 @@ def extract_price_from_comment(comment):
                 logger.info(f"Preço extraído da segunda parte: '{normalized_price}'")
                 return normalized_price
             
-            # Se tiver ponto, precisamos determinar se é separador de milhar ou decimal
+            # Se já tiver ponto, já está no formato correto
             elif '.' in price_part:
-                # Contar dígitos após o último ponto
-                parts = price_part.split('.')
-                last_part = parts[-1]
+                # Verificar se é um número válido
+                float(price_part)  # Isso vai lançar ValueError se não for válido
                 
-                # Se o último ponto tiver 0, 1 ou 2 dígitos após ele, provavelmente é um decimal
-                if len(last_part) <= 2:
-                    # Verificar se é um número válido
-                    float(price_part)  # Isso vai lançar ValueError se não for válido
-                    logger.info(f"Preço no formato com ponto como decimal: '{price_part}'")
-                    return price_part
-                # Se tiver 3 dígitos após o último ponto, é provavelmente um separador de milhar brasileiro
-                else:
-                    normalized_price = price_part.replace('.', '')
-                    # Verificar se é um número válido
-                    float(normalized_price)  # Isso vai lançar ValueError se não for válido
-                    logger.info(f"Preço no formato brasileiro com ponto como separador de milhar: '{normalized_price}.00'")
-                    return normalized_price + ".00"
+                logger.info(f"Preço extraído da segunda parte (formato com ponto): '{price_part}'")
+                return price_part
             
             # Se for apenas dígitos, adicionar .00
             elif price_part.isdigit():
