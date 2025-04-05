@@ -45,6 +45,7 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
     added_count = 0
     processed_count = 0
     
+    return post_info
     try:
         # Iniciar o cliente
         await app.start()

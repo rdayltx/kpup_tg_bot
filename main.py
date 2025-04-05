@@ -17,37 +17,37 @@ from keepa.browser_session_manager import browser_manager
 setup_logging(console_output=True, file_output=True)
 logger = get_logger(__name__)
 
-# async def retrieve_missing_products_on_startup(application, settings, post_info):
-#     """
-#     Recuperar produtos ausentes na inicialização
-#     """
-#     if settings.SOURCE_CHAT_ID:
-#         logger.info("Verificando posts de produtos ausentes...")
-#         try:
-#             updated_post_info = await retrieve_missing_products(
-#                 application.bot,
-#                 settings.SOURCE_CHAT_ID,
-#                 post_info
-#             )
+async def retrieve_missing_products_on_startup(application, settings, post_info):
+    """
+    Recuperar produtos ausentes na inicialização
+    """
+    if settings.SOURCE_CHAT_ID:
+        logger.info("Verificando posts de produtos ausentes...")
+        try:
+            updated_post_info = await retrieve_missing_products(
+                application.bot,
+                settings.SOURCE_CHAT_ID,
+                post_info
+            )
             
-#             # Salvar alterações, mesmo que não haja alterações aparentes
-#             # Isso garante que temos um arquivo de dados atualizado
-#             save_post_info(updated_post_info)
+            # Salvar alterações, mesmo que não haja alterações aparentes
+            # Isso garante que temos um arquivo de dados atualizado
+            save_post_info(updated_post_info)
             
-#             # Verificar quantos posts foram adicionados
-#             new_count = len(updated_post_info) - len(post_info)
-#             if new_count > 0:
-#                 logger.info(f"Informações de posts atualizadas com {new_count} produtos ausentes. Agora rastreando {len(updated_post_info)} posts")
-#             else:
-#                 logger.info(f"Nenhum post de produto ausente encontrado. Mantendo {len(updated_post_info)} posts")
+            # Verificar quantos posts foram adicionados
+            new_count = len(updated_post_info) - len(post_info)
+            if new_count > 0:
+                logger.info(f"Informações de posts atualizadas com {new_count} produtos ausentes. Agora rastreando {len(updated_post_info)} posts")
+            else:
+                logger.info(f"Nenhum post de produto ausente encontrado. Mantendo {len(updated_post_info)} posts")
             
-#             return updated_post_info
-#         except Exception as e:
-#             logger.error(f"Erro ao recuperar produtos ausentes: {str(e)}")
-#             # Garantir que salvamos o estado atual mesmo em caso de erro
-#             save_post_info(post_info)
-#             return post_info
-#     return post_info
+            return updated_post_info
+        except Exception as e:
+            logger.error(f"Erro ao recuperar produtos ausentes: {str(e)}")
+            # Garantir que salvamos o estado atual mesmo em caso de erro
+            save_post_info(post_info)
+            return post_info
+    return post_info
 
 def main() -> None:
     """Iniciar o bot."""
