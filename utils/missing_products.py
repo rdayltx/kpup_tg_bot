@@ -51,69 +51,54 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
         logger.info("Cliente Pyrogram iniciado com sucesso")
         
         # Lidar com o erro PEER_ID_INVALID
-        # Primeiro, tenta resolver o chat_id para um formato válido
         try:
-            # Tente diferentes formatos do chat_id
-            chat_id_int = int(chat_id)
+            # Para chat_id específico fornecido
+            chat_id_to_use = int("-1002563291570")  # Usar o ID exato fornecido
+            logger.info(f"Usando ID de chat específico: {chat_id_to_use}")
             
-            # Verificar se o ID já tem o formato de supergrupo (-100...)
-            if not str(chat_id_int).startswith('-100'):
-                # Para canais e supergrupos, o formato deve ser -100 seguido do ID
-                if str(chat_id_int).startswith('-'):
-                    # Já é negativo, mas sem o prefixo 100
-                    chat_id_supergroup = int('-100' + str(chat_id_int)[1:])
-                else:
-                    # ID positivo, converter para formato de supergrupo
-                    chat_id_supergroup = int('-100' + str(chat_id_int))
-                
-                logger.info(f"Convertendo ID do chat {chat_id_int} para formato de supergrupo: {chat_id_supergroup}")
-                chat_id_to_use = chat_id_supergroup
-            else:
-                # Já está no formato correto
-                chat_id_to_use = chat_id_int
-                
             # Tentar obter informações do chat
             try:
-                chat = await app.get_chat(chat_id_to_use)
-                logger.info(f"Chat acessado: {chat.title}")
+                # Primeiro, tentar entrar no chat usando link de convite (se disponível)
+                invite_link = os.environ.get('CHAT_INVITE_LINK', '')
+                if invite_link:
+                    try:
+                        logger.info(f"Tentando entrar no chat usando link de convite: {invite_link}")
+                        await app.join_chat(invite_link)
+                        logger.info(f"Tentativa de entrar no chat enviada com sucesso")
+                    except Exception as join_err:
+                        logger.warning(f"Tentativa de entrar no chat falhou (pode ser que já seja membro): {str(join_err)}")
                 
-                # Usar o ID resolvido
-                chat_id = chat_id_to_use
-            except PeerIdInvalid:
-                # Ainda não conseguimos acessar, tentar formato alternativo
+                # Agora tentar acessar o chat diretamente
                 try:
-                    # Tentar como um nome de usuário se começar com @
-                    if isinstance(chat_id, str) and chat_id.startswith('@'):
-                        chat = await app.get_chat(chat_id)
-                        logger.info(f"Chat acessado via username: {chat.title}")
-                        chat_id = chat.id
-                    else:
-                        # Não conseguimos acessar o chat, tentar entrar/visualizar primeiro
-                        logger.warning(f"Não foi possível acessar o chat {chat_id}. A conta provavelmente não é membro. Tentando resolver esse problema.")
-                        
-                        # Se tivermos o link de convite, tentar usá-lo
-                        invite_link = os.environ.get('CHAT_INVITE_LINK', '')
-                        if invite_link:
-                            try:
-                                logger.info(f"Tentando entrar no chat usando link de convite: {invite_link}")
-                                await app.join_chat(invite_link)
-                                # Agora tenta acessar o chat novamente
-                                chat = await app.get_chat(chat_id_to_use)
-                                logger.info(f"Entrou e acessou o chat com sucesso: {chat.title}")
-                                chat_id = chat_id_to_use
-                            except Exception as join_err:
-                                logger.error(f"Não foi possível entrar no chat: {str(join_err)}")
-                                raise
-                        else:
-                            # Sem link de convite, não podemos resolver automaticamente
-                            logger.error(f"A conta não tem acesso ao chat {chat_id} e não foi fornecido um link de convite.")
-                            logger.error("Por favor, adicione a conta ao chat manualmente ou forneça CHAT_INVITE_LINK no ambiente.")
-                            raise PeerIdInvalid("A conta não tem acesso ao chat e não consegue resolver automaticamente.")
-                except Exception as chat_err:
-                    logger.error(f"Todas as tentativas de acessar o chat falharam: {str(chat_err)}")
+                    chat = await app.get_chat(chat_id_to_use)
+                    logger.info(f"Chat acessado com sucesso: {chat.title}")
+                    chat_id = chat_id_to_use
+                except PeerIdInvalid:
+                    # Tentar formato alternativo
+                    alternative_id = int(chat_id_to_use)  # sem string
+                    logger.info(f"Tentando formato alternativo: {alternative_id}")
+                    chat = await app.get_chat(alternative_id)
+                    logger.info(f"Chat acessado com formato alternativo: {chat.title}")
+                    chat_id = alternative_id
+            except Exception as chat_err:
+                logger.error(f"Não foi possível acessar o chat {chat_id_to_use}: {str(chat_err)}")
+                
+                # SOLUÇÃO DE CONTORNO PARA TESTES:
+                # Se não conseguimos acessar o chat, mas temos algumas mensagens no post_info,
+                # podemos tentar trabalhar com essas mensagens diretamente
+                if len(post_info) > 0:
+                    logger.warning("Não foi possível acessar o chat. Tentando trabalhar com IDs de mensagens conhecidas.")
+                    # Informar usuário sobre as etapas manuais necessárias
+                    logger.warning("ATENÇÃO: A conta usada pela sessão Pyrogram precisa ser membro do chat.")
+                    logger.warning("SOLUÇÃO: Entre no chat com essa conta, envie uma mensagem, e tente novamente.")
+                    
+                    # Retornar post_info inalterado
+                    return post_info
+                else:
+                    # Sem mensagens conhecidas e sem acesso ao chat, não podemos continuar
                     raise
         except Exception as e:
-            logger.error(f"Não foi possível acessar o chat {chat_id}: {str(e)}")
+            logger.error(f"Todos os métodos para acessar o chat falharam: {str(e)}")
             await app.stop()
             return post_info
         
@@ -353,8 +338,8 @@ async def retrieve_missing_products(bot, source_chat_id, post_info):
         return post_info
     
     try:
-        # Executar recuperação com Pyrogram
-        updated_post_info = await recover_with_pyrogram_string(session_string, source_chat_id, post_info)
+        # Executar recuperação com Pyrogram (forçando ID específico)
+        updated_post_info = await recover_with_pyrogram_string(session_string, "-1002563291570", post_info)
         return updated_post_info
     except Exception as e:
         logger.error(f"Erro na recuperação com Pyrogram: {str(e)}")
@@ -396,8 +381,8 @@ async def start_recovery_command(update, context):
         return
     
     try:
-        # Executar recuperação com Pyrogram
-        updated_post_info = await recover_with_pyrogram_string(session_string, settings.SOURCE_CHAT_ID, post_info)
+        # Executar recuperação com Pyrogram (forçando ID específico)
+        updated_post_info = await recover_with_pyrogram_string(session_string, "-1002563291570", post_info)
         
         # Contar novos posts
         new_count = len(updated_post_info) - len(post_info)
