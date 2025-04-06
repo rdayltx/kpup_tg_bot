@@ -3408,5 +3408,525 @@
     "asin": "B0862YR2FT",
     "source": "Premium",
     "timestamp": "2025-04-05T02:37:30"
+  },
+  "1181": {
+    "asin": "B004Y9LZU2",
+    "source": "Meraxes",
+    "timestamp": "2025-04-05T04:04:39.388387"
+  },
+  "1182": {
+    "asin": "B0BJL678X4",
+    "source": "Premium",
+    "timestamp": "2025-04-05T05:07:59.254814"
+  },
+  "1183": {
+    "asin": "B0BJL39X4P",
+    "source": "Premium",
+    "timestamp": "2025-04-05T05:07:59.258620"
+  },
+  "1184": {
+    "asin": "B08WYM2PJS",
+    "source": "Vermithor",
+    "timestamp": "2025-04-05T06:41:37.053038"
+  },
+  "1185": {
+    "asin": "B07MFFR57T",
+    "source": "Premium",
+    "timestamp": "2025-04-05T06:49:38.767604"
+  },
+  "1186": {
+    "asin": "B0DB2N5TDW",
+    "source": "Premium",
+    "timestamp": "2025-04-05T07:36:21.615584"
+  },
+  "1187": {
+    "asin": "B079VVFYZX",
+    "source": "Balerion",
+    "timestamp": "2025-04-05T07:50:25.154136"
+  },
+  "1188": {
+    "asin": "B073ZGK2JV",
+    "source": "Cannibal",
+    "timestamp": "2025-04-05T08:43:04.908258"
+  },
+  "1189": {
+    "asin": "B0CV5TKYNK",
+    "source": "Premium",
+    "timestamp": "2025-04-05T08:50:12.938408"
+  },
+  "1190": {
+    "asin": "B00WQSFARM",
+    "source": "Premium",
+    "timestamp": "2025-04-05T09:33:21.340773"
+  },
+  "1191": {
+    "asin": "B002BSJLE0",
+    "source": "Premium",
+    "timestamp": "2025-04-05T09:44:45.146080"
+  },
+  "1192": {
+    "asin": "B07GMDZX9M",
+    "source": "Premium",
+    "timestamp": "2025-04-05T09:52:34.071051"
+  },
+  "1193": {
+    "asin": "B07CKCWNRC",
+    "source": "Premium",
+    "timestamp": "2025-04-05T09:58:34.291971"
+  },
+  "1194": {
+    "asin": "B0C91CZ1D3",
+    "source": "Premium",
+    "timestamp": "2025-04-05T10:54:38.898502"
+  },
+  "1195": {
+    "asin": "B0C91KQHVG",
+    "source": "Premium",
+    "timestamp": "2025-04-05T10:54:38.902593"
+  },
+  "1196": {
+    "asin": "B08FTV8J79",
+    "source": "Premium",
+    "timestamp": "2025-04-05T11:00:08.309143"
+  },
+  "1201": {
+    "asin": "B0CY6T3B68",
+    "source": "Premium",
+    "timestamp": "2025-04-05T11:58:24.631140"
+  },
+  "1202": {
+    "asin": "B0B6KV6TMT",
+    "source": "Premium",
+    "timestamp": "2025-04-05T11:58:24.635097"
+  },
+  "1203": {
+    "asin": "B07DZ6S2GL",
+    "source": "Premium",
+    "timestamp": "2025-04-05T12:16:11.634854"
+  },
+  "1204": {
+    "asin": "B0CS3RHBZQ",
+    "source": "Balerion",
+    "timestamp": "2025-04-05T12:47:39.229115"
+  },
+  "1205": {
+    "asin": "B08XNTQNFB",
+    "source": "Premium",
+    "timestamp": "2025-04-05T13:17:52.354732"
+  },
+  "1206": {
+    "asin": "B0CKLSS6KL",
+    "source": "Premium",
+    "timestamp": "2025-04-05T13:49:48.079924"
+  },
+  "1207": {
+    "asin": "B07VLJCJSW",
+    "source": "Premium",
+    "timestamp": "2025-04-05T14:16:26.555603"
+  },
+  "1211": {
+    "asin": "B07C8896MY",
+    "source": "Premium",
+    "timestamp": "2025-04-05T14:34:08.707090"
+  },
+  "1212": {
+    "asin": "B07ZJWMNJX",
+    "source": "Premium",
+    "timestamp": "2025-04-05T14:47:12.363710"
+  },
+  "1213": {
+    "asin": "B08XPWK8C5",
+    "source": "Premium",
+    "timestamp": "2025-04-05T14:47:12.367989"
+  },
+  "1214": {
+    "asin": "B08QK3SK1H",
+    "source": "Premium",
+    "timestamp": "2025-04-05T14:54:55.597060"
+  },
+  "1215": {
+    "asin": "B09KCZR57M",
+    "source": "Premium",
+    "timestamp": "2025-04-05T16:06:57.561791"
+  },
+  "1216": {
+    "asin": "B0CZC5XTVJ",
+    "source": "Premium",
+    "timestamp": "2025-04-05T16:18:09.456835"
+  },
+  "1219": {
+    "asin": "B0B3NHTPGY",
+    "source": "Premium",
+    "timestamp": "2025-04-05T19:51:30.467189"
+  },
+  "1221": {
+    "asin": "B0D1FTTTKK",
+    "source": "Premium",
+    "timestamp": "2025-04-05T20:33:34.045688"
+  },
+  "1222": {
+    "asin": "B09SVPDX3G",
+    "source": "Premium",
+    "timestamp": "2025-04-05T20:37:23.856379"
+  },
+  "1224": {
+    "asin": "B07XRG825H",
+    "source": "Premium",
+    "timestamp": "2025-04-05T20:59:37.847560"
+  },
+  "1225": {
+    "asin": "B08S4DCMB2",
+    "source": "Cannibal",
+    "timestamp": "2025-04-05T20:59:37.851688"
+  },
+  "1226": {
+    "asin": "B0D52CQHT9",
+    "source": "Premium",
+    "timestamp": "2025-04-05T20:59:42.082407"
+  },
+  "1227": {
+    "asin": "B07J2SP92M",
+    "source": "Premium",
+    "timestamp": "2025-04-05T20:59:42.086572"
+  },
+  "1230": {
+    "asin": "B07FHHM2Q7",
+    "source": "Premium",
+    "timestamp": "2025-04-05T21:14:08.531670"
+  },
+  "1231": {
+    "asin": "B0D8CHF1N3",
+    "source": "Balerion",
+    "timestamp": "2025-04-05T21:14:08.535709"
+  },
+  "1232": {
+    "asin": "B005HQNCLG",
+    "source": "Cannibal",
+    "timestamp": "2025-04-05T21:29:24.258714"
+  },
+  "1233": {
+    "asin": "B0DCKCN6L6",
+    "source": "Premium",
+    "timestamp": "2025-04-05T21:43:55.389701"
+  },
+  "1234": {
+    "asin": "B07FZ6PKJF",
+    "source": "Premium",
+    "timestamp": "2025-04-05T21:47:20.991702"
+  },
+  "1235": {
+    "asin": "B0DGDC5DS5",
+    "source": "Meraxes",
+    "timestamp": "2025-04-05T21:57:50.316159"
+  },
+  "1236": {
+    "asin": "B0862Y7HNY",
+    "source": "Premium",
+    "timestamp": "2025-04-05T21:57:50.321256"
+  },
+  "1238": {
+    "asin": "B0D98YP4PT",
+    "source": "Meraxes",
+    "timestamp": "2025-04-05T22:38:42.503741"
+  },
+  "1239": {
+    "asin": "B07GM8DVLT",
+    "source": "Premium",
+    "timestamp": "2025-04-05T22:42:07.351330"
+  },
+  "1240": {
+    "asin": "B07DZ8KX3G",
+    "source": "Premium",
+    "timestamp": "2025-04-05T23:44:49.293316"
+  },
+  "1241": {
+    "asin": "B09CBTSBQL",
+    "source": "Premium",
+    "timestamp": "2025-04-05T23:44:49.297572"
+  },
+  "1242": {
+    "asin": "B0CQDB5PJ3",
+    "source": "Cannibal",
+    "timestamp": "2025-04-05T23:44:50.728879"
+  },
+  "1243": {
+    "asin": "B0918FHY6P",
+    "source": "Balerion",
+    "timestamp": "2025-04-05T23:48:49.766054"
+  },
+  "1244": {
+    "asin": "B0CLHGKHV8",
+    "source": "Cannibal",
+    "timestamp": "2025-04-06T00:12:16.413514"
+  },
+  "1245": {
+    "asin": "B01N4EX1EE",
+    "source": "Premium",
+    "timestamp": "2025-04-06T00:23:04.291124"
+  },
+  "1246": {
+    "asin": "B00OCJ0ZKA",
+    "source": "Premium",
+    "timestamp": "2025-04-06T00:48:44.706671"
+  },
+  "1248": {
+    "asin": "B07H113TPQ",
+    "source": "Premium",
+    "timestamp": "2025-04-06T01:34:36.929511"
+  },
+  "1249": {
+    "asin": "B0BSHC38VP",
+    "source": "Meraxes",
+    "timestamp": "2025-04-06T01:45:23.522694"
+  },
+  "1250": {
+    "asin": "B0DG3PWR8W",
+    "source": "Premium",
+    "timestamp": "2025-04-06T01:49:33.052650"
+  },
+  "1251": {
+    "asin": "B09RG7Z5NX",
+    "source": "Meraxes",
+    "timestamp": "2025-04-06T02:44:56.753925"
+  },
+  "1252": {
+    "asin": "B06WVHRFS6",
+    "source": "Balerion",
+    "timestamp": "2025-04-06T02:44:56.758019"
+  },
+  "1253": {
+    "asin": "B08TW2GBSM",
+    "source": "Premium",
+    "timestamp": "2025-04-06T02:49:01.340502"
+  },
+  "1254": {
+    "asin": "B08CNG76SS",
+    "source": "Premium",
+    "timestamp": "2025-04-06T03:00:27.426403"
+  },
+  "1255": {
+    "asin": "B08HXPQYPR",
+    "source": "Premium",
+    "timestamp": "2025-04-06T03:53:03.213607"
+  },
+  "1256": {
+    "asin": "B0D1HW6F9T",
+    "source": "Cannibal",
+    "timestamp": "2025-04-06T03:53:03.217694"
+  },
+  "1257": {
+    "asin": "B00NQ2Y154",
+    "source": "Meraxes",
+    "timestamp": "2025-04-06T04:01:20.227842"
+  },
+  "1258": {
+    "asin": "B004Y9GVZG",
+    "source": "Meraxes",
+    "timestamp": "2025-04-06T04:01:20.231981"
+  },
+  "1259": {
+    "asin": "B0CN7HYFLC",
+    "source": "Premium",
+    "timestamp": "2025-04-06T04:05:22.621329"
+  },
+  "1260": {
+    "asin": "B0CYVJYTDL",
+    "source": "Premium",
+    "timestamp": "2025-04-06T04:13:41.461927"
+  },
+  "1261": {
+    "asin": "B07N78G8GB",
+    "source": "Premium",
+    "timestamp": "2025-04-06T04:51:45.285987"
+  },
+  "1262": {
+    "asin": "B09Z31YGJK",
+    "source": "Premium",
+    "timestamp": "2025-04-06T04:58:58.910696"
+  },
+  "1263": {
+    "asin": "B07MBGY443",
+    "source": "Premium",
+    "timestamp": "2025-04-06T04:58:58.914859"
+  },
+  "1264": {
+    "asin": "B08SFKSCLC",
+    "source": "Premium",
+    "timestamp": "2025-04-06T05:06:38.668501"
+  },
+  "1265": {
+    "asin": "B08YKGX2VD",
+    "source": "Premium",
+    "timestamp": "2025-04-06T05:29:01.447197"
+  },
+  "1266": {
+    "asin": "B07K11FVBY",
+    "source": "Premium",
+    "timestamp": "2025-04-06T05:43:50.636361"
+  },
+  "1267": {
+    "asin": "B0BTQY3GMZ",
+    "source": "Premium",
+    "timestamp": "2025-04-06T06:06:21.508528"
+  },
+  "1268": {
+    "asin": "B076H5HQ28",
+    "source": "Premium",
+    "timestamp": "2025-04-06T06:06:21.512698"
+  },
+  "1269": {
+    "asin": "B0BVG59M32",
+    "source": "Balerion",
+    "timestamp": "2025-04-06T06:06:21.516915"
+  },
+  "1270": {
+    "asin": "B076X5ZLZQ",
+    "source": "Premium",
+    "timestamp": "2025-04-06T06:14:09.624948"
+  },
+  "1271": {
+    "asin": "B07S2Z8VSC",
+    "source": "Premium",
+    "timestamp": "2025-04-06T06:22:13.058404"
+  },
+  "1272": {
+    "asin": "B08KSX6V9L",
+    "source": "Meraxes",
+    "timestamp": "2025-04-06T06:53:02.092328"
+  },
+  "1273": {
+    "asin": "B099SVK33J",
+    "source": "Meraxes",
+    "timestamp": "2025-04-06T06:53:02.096554"
+  },
+  "1274": {
+    "asin": "B07CWBK7FJ",
+    "source": "Balerion",
+    "timestamp": "2025-04-06T06:56:52.786463"
+  },
+  "1275": {
+    "asin": "B08WYM2PJS",
+    "source": "Vermithor",
+    "timestamp": "2025-04-06T07:24:00.742631"
+  },
+  "1276": {
+    "asin": "B0BY3JF557",
+    "source": "Premium",
+    "timestamp": "2025-04-06T07:34:33.465908"
+  },
+  "1277": {
+    "asin": "B08YKCTKWY",
+    "source": "Premium",
+    "timestamp": "2025-04-06T07:34:33.470120"
+  },
+  "1278": {
+    "asin": "B09SVS9DPM",
+    "source": "Premium",
+    "timestamp": "2025-04-06T07:57:34.461938"
+  },
+  "1279": {
+    "asin": "B08DQN4HQP",
+    "source": "Premium",
+    "timestamp": "2025-04-06T10:03:42.486930"
+  },
+  "1280": {
+    "asin": "B0D96TN5W8",
+    "source": "Premium",
+    "timestamp": "2025-04-06T11:02:25.348974"
+  },
+  "1281": {
+    "asin": "B07CN97914",
+    "source": "Premium",
+    "timestamp": "2025-04-06T11:02:25.353113"
+  },
+  "1282": {
+    "asin": "B07MLSQJQ1",
+    "source": "Premium",
+    "timestamp": "2025-04-06T11:02:25.357486"
+  },
+  "1283": {
+    "asin": "B07VPRFVCW",
+    "source": "Premium",
+    "timestamp": "2025-04-06T11:02:28.412888"
+  },
+  "1289": {
+    "asin": "B076JL8DDH",
+    "source": "Balerion",
+    "timestamp": "2025-04-06T12:05:41.888120"
+  },
+  "1290": {
+    "asin": "B0D292HCS7",
+    "source": "Vermithor",
+    "timestamp": "2025-04-06T12:05:41.892652"
+  },
+  "1293": {
+    "asin": "B088RK3B8G",
+    "source": "Premium",
+    "timestamp": "2025-04-06T14:01:03.287199"
+  },
+  "1294": {
+    "asin": "B002BSJLE0",
+    "source": "Premium",
+    "timestamp": "2025-04-06T14:11:50.720624"
+  },
+  "1295": {
+    "asin": "B0CSDSTPPS",
+    "source": "Premium",
+    "timestamp": "2025-04-06T14:11:50.724950"
+  },
+  "1296": {
+    "asin": "B0DPGPLGJF",
+    "source": "Premium",
+    "timestamp": "2025-04-06T14:11:54.934409"
+  },
+  "1297": {
+    "asin": "B08KSVQ62G",
+    "source": "Premium",
+    "timestamp": "2025-04-06T14:11:54.938901"
+  },
+  "1313": {
+    "asin": "B0CCG7139R",
+    "source": "Meraxes",
+    "timestamp": "2025-04-06T15:36:14.474816"
+  },
+  "1314": {
+    "asin": "B079VVFYZX",
+    "source": "Balerion",
+    "timestamp": "2025-04-06T15:44:14.632293"
+  },
+  "1315": {
+    "asin": "B076KTQC3P",
+    "source": "Balerion",
+    "timestamp": "2025-04-06T16:25:34.383463"
+  },
+  "1316": {
+    "asin": "B07GDQ2HB7",
+    "source": "Balerion",
+    "timestamp": "2025-04-06T16:40:34.757516"
+  },
+  "1317": {
+    "asin": "B06XQ27YLL",
+    "source": "Premium",
+    "timestamp": "2025-04-06T16:51:52.389088"
+  },
+  "1318": {
+    "asin": "B07ZJWMNJX",
+    "source": "Premium",
+    "timestamp": "2025-04-06T16:51:52.393339"
+  },
+  "1319": {
+    "asin": "B07FGXX22H",
+    "source": "Premium",
+    "timestamp": "2025-04-06T18:39:53.980947"
+  },
+  "1322": {
+    "asin": "B005IZZDAY",
+    "source": "Premium",
+    "timestamp": "2025-04-06T20:26:19.589280"
+  },
+  "1323": {
+    "asin": "B0DMT4T62W",
+    "source": "Premium",
+    "timestamp": "2025-04-06T20:26:19.593519"
   }
 }

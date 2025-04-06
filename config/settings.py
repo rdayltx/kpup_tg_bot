@@ -22,6 +22,8 @@ class Settings:
     KEEPA_ACCOUNTS: Dict[str, KeepaAccount]
     # Conta padrão a ser usada se nenhum identificador específico for encontrado
     DEFAULT_KEEPA_ACCOUNT: str
+    TARGET_CHAT_NAME: str  # Novo atributo para o nome do chat
+    HARDCODED_ID: str     # Novo atributo para o ID hardcoded
     # Mapeamento de identificadores de conta para nomes de usuário
     ACCOUNT_USERNAME_MAPPINGS: Dict[str, List[str]] = field(default_factory=dict)
 
@@ -33,6 +35,8 @@ def load_settings() -> Settings:
     # Valores padrão
     data_file = "post_info.json"
     update_existing = True
+    target_chat_name = "chat do keepa do pobre"  # Valor padrão
+    hardcoded_id = "-1002563291570"             # Valor padrão
     
     # Carregar contas Keepa
     keepa_accounts = {}
@@ -72,6 +76,8 @@ def load_settings() -> Settings:
         DATA_FILE=os.getenv("DATA_FILE", data_file),
         KEEPA_ACCOUNTS=keepa_accounts,
         DEFAULT_KEEPA_ACCOUNT=default_account,
+        TARGET_CHAT_NAME=os.getenv("TARGET_CHAT_NAME", target_chat_name),  # Carrega do .env ou usa padrão
+        HARDCODED_ID=os.getenv("HARDCODED_ID", hardcoded_id),             # Carrega do .env ou usa padrão
         ACCOUNT_USERNAME_MAPPINGS=account_mappings
     )
     

@@ -13,6 +13,7 @@ from keepa.api import login_to_keepa, update_keepa_product, delete_keepa_trackin
 from utils.logger import get_logger
 from utils.retry import async_retry
 from keepa.browser_session_manager import browser_manager
+from data.product_database import product_db
 
 # Importar o formatador de mensagens aprimorado
 from utils.message_formatter import format_destination_message
@@ -211,6 +212,7 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
                         text=f"❌ Falha ao fazer login no Keepa com a conta {account_identifier}"
                     )
                 return False
+            pass
         else:
             # Usar o driver da sessão
             driver = session.driver
@@ -220,6 +222,10 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
         update_success, product_title = update_keepa_product(driver, asin, price)
         if update_success:
             logger.info(f"✅ ASIN {asin} atualizado com sucesso no Keepa com preço {price} usando conta {account_identifier}")
+            
+            # Atualizar o banco de dados de produtos
+            product_db.update_product(account_identifier, asin, price, product_title)
+            logger.info(f"✅ Banco de dados de produtos atualizado para ASIN {asin}, conta {account_identifier}")
             
             # Notificar administrador
             if settings.ADMIN_ID:
@@ -236,6 +242,7 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
                     chat_id=settings.ADMIN_ID,
                     text=f"❌ Falha ao atualizar ASIN {asin} no Keepa usando conta {account_identifier}"
                 )
+            pass
                 
     except Exception as e:
         logger.error(f"❌ Erro ao atualizar preço no Keepa: {str(e)}")
@@ -256,6 +263,7 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
                 logger.info(f"Sessão do driver Chrome fechada para a conta {account_identifier}")
             except Exception as e:
                 logger.error(f"Erro ao fechar o driver Chrome: {str(e)}")
+        pass
     
     # Formatar e enviar a mensagem informativa para o canal de destino
     formatted_message = format_destination_message(
@@ -370,6 +378,8 @@ async def handle_delete_comment(context, asin, source, comment, user_name):
                     chat_id=settings.ADMIN_ID,
                     text=f"❌ Falha ao excluir rastreamento do ASIN {asin} usando conta {account_identifier}"
                 )
+            pass    
+            
     except Exception as e:
         logger.error(f"❌ Erro ao excluir rastreamento no Keepa: {str(e)}")
         
@@ -389,6 +399,8 @@ async def handle_delete_comment(context, asin, source, comment, user_name):
                 logger.info(f"Sessão do driver Chrome fechada para a conta {account_identifier}")
             except Exception as e:
                 logger.error(f"Erro ao fechar o driver Chrome: {str(e)}")
+            
+        pass
     
     # Formatar e enviar a mensagem informativa para o canal de destino
     formatted_message = format_destination_message(

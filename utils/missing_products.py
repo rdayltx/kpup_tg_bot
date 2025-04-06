@@ -56,7 +56,7 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
 
         try:
             # Primeira tentativa: buscar o chat pelo título exato
-            target_chat_name = "chat do keepa do pobre"
+            target_chat_name = settings.TARGET_CHAT_NAME  # Usar o valor de settings
             
             logger.info(f"Buscando chat pelo nome: '{target_chat_name}'")
             
@@ -82,9 +82,9 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
             
             # Se ainda não encontrou, procurar pelo ID exato
             if not found_chat:
-                logger.info("Tentando pelo ID específico -1002563291570...")
+                hardcoded_id = settings.HARDCODED_ID  # Usar o valor de settings
+                logger.info(f"Tentando pelo ID específico {hardcoded_id}...")
                 try:
-                    hardcoded_id = -1002563291570
                     dialog_chat = await app.get_chat(hardcoded_id)
                     logger.info(f"Chat encontrado pelo ID hardcoded: {dialog_chat.title} (ID: {dialog_chat.id})")
                     chat = dialog_chat
@@ -121,7 +121,7 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
         except Exception as e:
             logger.error(f"Erro ao buscar chat: {str(e)}")
             # Se tudo falhar mas temos um ID conhecido, tentar usar mesmo assim
-            chat_id_to_use = -1002563291570
+            chat_id_to_use = settings.HARDCODED_ID  # Usar o valor de settings como fallback
             logger.info(f"Usando ID hardcoded como fallback: {chat_id_to_use}")
         
         # Neste ponto, vamos tentar obter mensagens do chat independentemente de termos conseguido obter os detalhes

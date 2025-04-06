@@ -1,7 +1,12 @@
 import json
 from datetime import datetime, timedelta
 import os
+import shutil
 from config.settings import load_settings
+from utils.logger import get_logger
+
+# Inicializar logger
+logger = get_logger(__name__)
 
 # Carregar configurações
 settings = load_settings()
@@ -18,10 +23,38 @@ def load_post_info():
 
 def save_post_info(post_info):
     """
-    Salvar dados no arquivo JSON
+    Salvar dados no arquivo JSON e criar cópia local
     """
+    # Salvar no local padrão (dentro do container)
     with open(settings.DATA_FILE, "w") as f:
         json.dump(post_info, f, indent=2)
+    
+    # Criar uma cópia em um local alternativo mapeado ao host
+    try:
+        # Definir locais alternativos para salvar o arquivo
+        local_copies = [
+            "/app/data/post_info.json",  # Diretório de dados mapeado ao host
+            "./data/post_info.json"      # Caso o caminho relativo esteja configurado
+        ]
+        
+        # Tentar salvar em cada um dos locais alternativos
+        for local_path in local_copies:
+            try:
+                # Garantir que o diretório exista
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                
+                # Copiar o arquivo ou salvar diretamente
+                if os.path.exists(settings.DATA_FILE):
+                    shutil.copy2(settings.DATA_FILE, local_path)
+                else:
+                    with open(local_path, "w") as f:
+                        json.dump(post_info, f, indent=2)
+                
+                logger.info(f"Cópia local de post_info.json criada em: {local_path}")
+            except Exception as copy_err:
+                logger.warning(f"Não foi possível criar cópia local em {local_path}: {str(copy_err)}")
+    except Exception as e:
+        logger.error(f"Erro ao criar cópias locais de post_info.json: {str(e)}")
 
 def clean_old_entries(post_info):
     """

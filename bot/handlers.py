@@ -18,6 +18,7 @@ from utils.backup import create_backup, list_backups, delete_backup, auto_cleanu
 # Importar utilitário de retry
 from utils.retry import async_retry
 from utils.missing_products import start_recovery_command
+from data.product_database import product_db
 
 from utils.logger import get_logger
 
@@ -43,14 +44,27 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Obter informações das sessões ativas
     active_sessions = len(browser_manager.sessions)
     
+    # Obter estatísticas do banco de dados de produtos
+    product_stats = product_db.get_statistics()
+    products_count = product_stats["total_products"]
+    
+    # Obter contagem de produtos por conta
+    products_by_account = []
+    for acc_id, acc_stats in product_stats["accounts"].items():
+        products_by_account.append(f"• {acc_id}: {acc_stats['product_count']} produtos")
+    
+    products_info = "\n".join(products_by_account) if products_by_account else "Nenhum produto registrado"
+    
     status_message = (
         f"🤖 **Status do Bot:**\n\n"
         f"💬 **Chat de Origem:** {settings.SOURCE_CHAT_ID or 'Não configurado'}\n"
         f"📩 **Chat de Destino:** {settings.DESTINATION_CHAT_ID or 'Não configurado'}\n"
         f"👤 **ID do Admin:** {settings.ADMIN_ID or 'Não configurado'}\n"
         f"📊 **Posts rastreados:** {len(post_info)}\n"
+        f"📦 **Produtos no banco de dados:** {products_count}\n"
         f"🌐 **Sessões ativas:** {active_sessions}\n"
         f"🔐 **Contas Keepa:**\n{accounts_info}\n"
+        f"📦 **Produtos por conta:**\n{products_info}\n"
         f"🔄 **Conta Padrão:** {settings.DEFAULT_KEEPA_ACCOUNT}\n"
         f"🔄 **Alertas de Atualização:** {'Sim' if settings.UPDATE_EXISTING_TRACKING else 'Não'}"
     )
@@ -181,9 +195,13 @@ async def update_price_manual_command(update: Update, context: ContextTypes.DEFA
             driver = session.driver
             logger.info(f"Usando sessão existente para a conta {account_identifier}")
             
-            success = update_keepa_product(driver, asin, price)
+            success, product_title = update_keepa_product(driver, asin, price)
             
             if success:
+                # Atualizar o banco de dados de produtos
+                product_db.update_product(account_identifier, asin, price, product_title)
+                logger.info(f"✅ Banco de dados de produtos atualizado para ASIN {asin}, conta {account_identifier}")
+                
                 await update.message.reply_text(f"✅ ASIN {asin} atualizado com sucesso com conta '{account_identifier}'!")
             else:
                 await update.message.reply_text(f"❌ Falha ao atualizar ASIN {asin} com conta '{account_identifier}'.")
@@ -197,9 +215,13 @@ async def update_price_manual_command(update: Update, context: ContextTypes.DEFA
                     await update.message.reply_text(f"❌ Falha ao fazer login no Keepa com conta '{account_identifier}'.")
                     return
                 
-                success = update_keepa_product(driver, asin, price)
+                success, product_title = update_keepa_product(driver, asin, price)
                 
                 if success:
+                    # Atualizar o banco de dados de produtos
+                    product_db.update_product(account_identifier, asin, price, product_title)
+                    logger.info(f"✅ Banco de dados de produtos atualizado para ASIN {asin}, conta {account_identifier}")
+                    
                     await update.message.reply_text(f"✅ ASIN {asin} atualizado com sucesso com conta '{account_identifier}'!")
                 else:
                     await update.message.reply_text(f"❌ Falha ao atualizar ASIN {asin} com conta '{account_identifier}'.")
@@ -247,9 +269,13 @@ async def delete_product_command(update: Update, context: ContextTypes.DEFAULT_T
             driver = session.driver
             logger.info(f"Usando sessão existente para a conta {account_identifier}")
             
-            success = delete_keepa_tracking(driver, asin)
+            success, product_title = delete_keepa_tracking(driver, asin)
             
             if success:
+                # Atualizar o banco de dados de produtos (excluir o produto)
+                product_db.delete_product(account_identifier, asin)
+                logger.info(f"✅ ASIN {asin} removido do banco de dados para conta {account_identifier}")
+                
                 await update.message.reply_text(f"✅ Rastreamento para ASIN {asin} excluído com sucesso da conta '{account_identifier}'!")
             else:
                 await update.message.reply_text(f"❌ Falha ao excluir rastreamento para ASIN {asin} da conta '{account_identifier}'.")
@@ -263,9 +289,13 @@ async def delete_product_command(update: Update, context: ContextTypes.DEFAULT_T
                     await update.message.reply_text(f"❌ Falha ao fazer login no Keepa com conta '{account_identifier}'.")
                     return
                 
-                success = delete_keepa_tracking(driver, asin)
+                success, product_title = delete_keepa_tracking(driver, asin)
                 
                 if success:
+                    # Atualizar o banco de dados de produtos (excluir o produto)
+                    product_db.delete_product(account_identifier, asin)
+                    logger.info(f"✅ ASIN {asin} removido do banco de dados para conta {account_identifier}")
+                    
                     await update.message.reply_text(f"✅ Rastreamento para ASIN {asin} excluído com sucesso da conta '{account_identifier}'!")
                 else:
                     await update.message.reply_text(f"❌ Falha ao excluir rastreamento para ASIN {asin} da conta '{account_identifier}'.")
@@ -526,11 +556,435 @@ async def sessions_status_command(update: Update, context: ContextTypes.DEFAULT_
     
     await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
 
+async def list_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Listar produtos no banco de dados para uma conta específica ou todas as contas."""
+    if not settings.ADMIN_ID or str(update.effective_user.id) != settings.ADMIN_ID:
+        await update.message.reply_text("Desculpe, apenas o administrador pode listar produtos.")
+        return
+    
+    # Verificar se foi especificada uma conta
+    args = context.args
+    account_id = args[0] if args else None
+    
+    if account_id:
+        # Verificar se a conta existe
+        if account_id not in settings.KEEPA_ACCOUNTS:
+            await update.message.reply_text(f"❌ Conta '{account_id}' não encontrada.")
+            available_accounts = ", ".join(settings.KEEPA_ACCOUNTS.keys())
+            await update.message.reply_text(f"Contas disponíveis: {available_accounts}")
+            return
+        
+        # Obter produtos da conta específica
+        products = product_db.get_all_products(account_id)
+        
+        if not products:
+            await update.message.reply_text(f"Nenhum produto encontrado para a conta '{account_id}'.")
+            return
+        
+        # Preparar mensagem com os produtos
+        products_list = []
+        for i, (asin, product_info) in enumerate(products.items(), 1):
+            price = product_info.get("price", "?")
+            title = product_info.get("product_title", "Sem título")
+            last_updated = product_info.get("last_updated", "?")
+            
+            # Formatar data se disponível
+            if last_updated and last_updated != "?":
+                try:
+                    dt = datetime.fromisoformat(last_updated)
+                    last_updated = dt.strftime("%Y-%m-%d %H:%M")
+                except:
+                    pass
+            
+            # Limitar título para não ficar muito grande
+            if len(title) > 40:
+                title = title[:37] + "..."
+            
+            products_list.append(f"{i}. {asin} - R${price} - {title} (Atualizado em: {last_updated})")
+        
+        # Dividir mensagem em partes se for muito longa
+        message = f"📋 Produtos para conta '{account_id}' ({len(products)}):\n\n"
+        
+        # Enviar em várias mensagens se a lista for muito grande
+        messages = []
+        current_message = message
+        
+        for product in products_list:
+            if len(current_message + product + "\n") > 4000:
+                messages.append(current_message)
+                current_message = ""
+            
+            current_message += product + "\n"
+        
+        if current_message:
+            messages.append(current_message)
+        
+        # Enviar mensagens
+        for msg in messages:
+            await update.message.reply_text(msg)
+    else:
+        # Obter estatísticas de todas as contas (em vez de buscar um produto específico)
+        stats = product_db.get_statistics()
+        
+        if stats["total_products"] == 0:
+            await update.message.reply_text("Nenhum produto encontrado no banco de dados.")
+            return
+        
+        # Preparar mensagem com estatísticas
+        accounts_info = []
+        for acc_id, acc_stats in stats["accounts"].items():
+            product_count = acc_stats["product_count"]
+            last_update = acc_stats["last_update"]
+            
+            # Formatar data se disponível
+            if last_update:
+                try:
+                    dt = datetime.fromisoformat(last_update)
+                    last_update = dt.strftime("%Y-%m-%d %H:%M")
+                except:
+                    last_update = "?"
+            else:
+                last_update = "Nunca"
+            
+            accounts_info.append(f"• {acc_id}: {product_count} produtos (Última atualização: {last_update})")
+        
+        accounts_list = "\n".join(accounts_info)
+        
+        message = (
+            f"📊 **Estatísticas do Banco de Dados de Produtos**\n\n"
+            f"**Total de produtos:** {stats['total_products']}\n\n"
+            f"**Contas:**\n{accounts_list}\n\n"
+            f"Para ver detalhes de uma conta específica, use:\n`/list_products NOME_DA_CONTA`"
+        )
+        
+        await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+
+async def product_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mostrar estatísticas do banco de dados de produtos."""
+    if not settings.ADMIN_ID or str(update.effective_user.id) != settings.ADMIN_ID:
+        await update.message.reply_text("Desculpe, apenas o administrador pode ver estatísticas.")
+        return
+    
+    # Obter estatísticas
+    stats = product_db.get_statistics()
+    
+    if stats["total_products"] == 0:
+        await update.message.reply_text("Nenhum produto encontrado no banco de dados.")
+        return
+    
+    # Preparar mensagem com estatísticas
+    accounts_info = []
+    for acc_id, acc_stats in stats["accounts"].items():
+        product_count = acc_stats["product_count"]
+        last_update = acc_stats["last_update"]
+        
+        # Formatar data se disponível
+        if last_update:
+            try:
+                dt = datetime.fromisoformat(last_update)
+                last_update = dt.strftime("%Y-%m-%d %H:%M")
+            except:
+                last_update = "?"
+        else:
+            last_update = "Nunca"
+        
+        accounts_info.append(f"• {acc_id}: {product_count} produtos (Última atualização: {last_update})")
+    
+    accounts_list = "\n".join(accounts_info)
+    
+    # Formatação da data da última atualização
+    last_update = stats.get("last_update", None)
+    if last_update:
+        try:
+            dt = datetime.fromisoformat(last_update)
+            last_update = dt.strftime("%Y-%m-%d %H:%M")
+        except:
+            last_update = "Desconhecida"
+    else:
+        last_update = "Nunca"
+    
+    message = (
+        f"📊 **Estatísticas do Banco de Dados de Produtos**\n\n"
+        f"**Total de produtos:** {stats['total_products']}\n"
+        f"**Última atualização:** {last_update}\n\n"
+        f"**Contas:**\n{accounts_list}\n\n"
+        f"Para ver produtos de uma conta específica, use:\n`/list_products NOME_DA_CONTA`\n"
+        f"Para buscar um produto específico, use:\n`/product ASIN [CONTA]`"
+    )
+    
+    await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+
+async def export_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Exportar banco de dados de produtos para um arquivo JSON."""
+    if not settings.ADMIN_ID or str(update.effective_user.id) != settings.ADMIN_ID:
+        await update.message.reply_text("Desculpe, apenas o administrador pode exportar produtos.")
+        return
+    
+    # Verificar se foi especificada uma conta
+    args = context.args
+    account_id = args[0] if args else None
+    
+    try:
+        # Preparar o nome do arquivo com timestamp atual
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        if account_id:
+            # Exportar apenas produtos da conta especificada
+            if account_id not in settings.KEEPA_ACCOUNTS:
+                await update.message.reply_text(f"❌ Conta '{account_id}' não encontrada.")
+                return
+            
+            products = product_db.get_all_products(account_id)
+            
+            if not products:
+                await update.message.reply_text(f"Nenhum produto encontrado para a conta '{account_id}'.")
+                return
+            
+            # Criar arquivo temporário com os produtos
+            export_filename = f"produtos_{account_id}_{timestamp}.json"
+            export_path = os.path.join("/tmp", export_filename)
+            
+            with open(export_path, "w") as f:
+                json.dump({account_id: products}, f, indent=2)
+            
+            # Enviar o arquivo
+            with open(export_path, 'rb') as f:
+                await update.message.reply_document(
+                    document=InputFile(f),
+                    caption=f"✅ Exportados {len(products)} produtos da conta {account_id}."
+                )
+            
+            # Limpar arquivo temporário
+            os.remove(export_path)
+        else:
+            # Exportar todos os produtos
+            products = product_db.get_all_products()
+            
+            if not products:
+                await update.message.reply_text("Nenhum produto encontrado no banco de dados.")
+                return
+            
+            # Contar total de produtos
+            total_products = sum(len(acc_products) for acc_products in products.values())
+            
+            # Criar arquivo temporário com os produtos
+            export_filename = f"todos_produtos_{timestamp}.json"
+            export_path = os.path.join("/tmp", export_filename)
+            
+            with open(export_path, "w") as f:
+                json.dump(products, f, indent=2)
+            
+            # Enviar o arquivo
+            with open(export_path, 'rb') as f:
+                await update.message.reply_document(
+                    document=InputFile(f),
+                    caption=f"✅ Exportados {total_products} produtos de {len(products)} contas."
+                )
+            
+            # Limpar arquivo temporário
+            os.remove(export_path)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro ao exportar produtos: {str(e)}")
+
+async def import_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Importar produtos de um arquivo JSON anexado."""
+    if not settings.ADMIN_ID or str(update.effective_user.id) != settings.ADMIN_ID:
+        await update.message.reply_text("Desculpe, apenas o administrador pode importar produtos.")
+        return
+    
+    # Verificar se temos um arquivo anexado
+    if not update.message.document:
+        await update.message.reply_text("❌ Nenhum arquivo anexado. Por favor, envie um arquivo JSON junto com o comando.")
+        return
+    
+    document = update.message.document
+    file_name = document.file_name
+    
+    # Verificar se é um arquivo JSON
+    if not file_name.lower().endswith('.json'):
+        await update.message.reply_text("❌ O arquivo deve estar no formato JSON.")
+        return
+    
+    await update.message.reply_text("🔄 Baixando e processando o arquivo...")
+    
+    try:
+        # Baixar o arquivo
+        file = await context.bot.get_file(document.file_id)
+        file_path = os.path.join("/tmp", file_name)
+        await file.download_to_drive(file_path)
+        
+        # Importar produtos
+        success, stats = product_db.import_database(file_path)
+        
+        # Remover o arquivo temporário
+        os.remove(file_path)
+        
+        if success:
+            # Preparar mensagem de sucesso
+            accounts_info = []
+            for acc_id, count in stats["accounts"].items():
+                if count > 0:
+                    accounts_info.append(f"• {acc_id}: +{count} produtos")
+            
+            accounts_text = "\n".join(accounts_info) if accounts_info else "Nenhum produto novo"
+            
+            message = (
+                f"✅ **Importação concluída com sucesso!**\n\n"
+                f"**Total de produtos importados:** {stats['products_imported']}\n\n"
+                f"**Produtos por conta:**\n{accounts_text}"
+            )
+            
+            await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+        else:
+            await update.message.reply_text("❌ Falha ao importar produtos. Verifique o formato do arquivo JSON.")
+            
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro ao importar produtos: {str(e)}")
+
+async def debug_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Comando de diagnóstico para debugar problemas com o banco de dados de produtos."""
+    if not settings.ADMIN_ID or str(update.effective_user.id) != settings.ADMIN_ID:
+        await update.message.reply_text("Desculpe, apenas o administrador pode usar este comando.")
+        return
+    
+    # Verificar se foi especificada uma conta
+    args = context.args
+    account_id = args[0] if args else None
+    
+    if not account_id:
+        await update.message.reply_text("❌ Por favor, especifique uma conta para diagnóstico.")
+        return
+    
+    # Gerar relatório de diagnóstico
+    try:
+        await update.message.reply_text(f"🔍 Iniciando diagnóstico para conta '{account_id}'...")
+        
+        # 1. Verificar se o arquivo existe
+        file_path = os.path.join("/app/data", f"products_{account_id}.json")
+        file_exists = os.path.exists(file_path)
+        
+        # 2. Verificar tamanho e permissões do arquivo
+        file_info = ""
+        if file_exists:
+            file_size = os.path.getsize(file_path)
+            file_perms = oct(os.stat(file_path).st_mode)[-3:]
+            file_info = f"- Tamanho: {file_size} bytes\n- Permissões: {file_perms}"
+        
+        # 3. Tentar ler o conteúdo do arquivo
+        file_content = ""
+        content_info = "- Não foi possível ler o conteúdo"
+        
+        if file_exists:
+            try:
+                with open(file_path, "r") as f:
+                    file_content = f.read()
+                if len(file_content) > 500:
+                    content_info = f"- Conteúdo: primeiro 500 caracteres - {file_content[:500]}..."
+                else:
+                    content_info = f"- Conteúdo: {file_content}"
+            except Exception as e:
+                content_info = f"- Erro ao ler conteúdo: {str(e)}"
+        
+        # 4. Verificar o cache interno
+        cache_info = "- Cache não disponível"
+        try:
+            if account_id in product_db.cached_databases:
+                cache_products = product_db.cached_databases[account_id]
+                cache_count = len(cache_products)
+                some_products = list(cache_products.keys())[:5]
+                cache_info = f"- Cache: {cache_count} produtos\n- Alguns ASINs: {', '.join(some_products)}"
+            else:
+                cache_info = "- Cache: Conta não encontrada no cache"
+        except Exception as e:
+            cache_info = f"- Erro ao acessar cache: {str(e)}"
+        
+        # 5. Tentar adicionar um produto de teste
+        test_product_info = ""
+        try:
+            test_asin = f"TEST{random.randint(10000, 99999)}"
+            test_price = "99.99"
+            
+            # Tentar adicionar produto
+            success = product_db.update_product(account_id, test_asin, test_price, "Produto de teste")
+            
+            if success:
+                # Verificar se o produto foi realmente adicionado
+                products = product_db.get_all_products(account_id)
+                if test_asin in products:
+                    test_product_info = f"- Teste: ✓ Produto {test_asin} adicionado com sucesso"
+                else:
+                    test_product_info = f"- Teste: ⚠️ Produto retornou sucesso mas não foi encontrado na leitura"
+            else:
+                test_product_info = "- Teste: ❌ Falha ao adicionar produto de teste"
+        except Exception as e:
+            test_product_info = f"- Teste: ❌ Erro: {str(e)}"
+        
+        # Montar mensagem de diagnóstico
+        diagnostico = (
+            f"📊 **Diagnóstico do Banco de Dados para '{account_id}'**\n\n"
+            f"**Arquivo:** {file_path}\n"
+            f"- Existe: {'✓' if file_exists else '❌'}\n"
+            f"{file_info}\n\n"
+            f"**Conteúdo:**\n{content_info}\n\n"
+            f"**Cache interno:**\n{cache_info}\n\n"
+            f"**Teste de adição:**\n{test_product_info}"
+        )
+        
+        await update.message.reply_text(diagnostico, parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro durante diagnóstico: {str(e)}")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mostrar mensagem de ajuda com todos os comandos disponíveis."""
+    help_text = (
+        "🤖 **Comandos do Keepa Bot**\n\n"
+        
+        "**Comandos Básicos:**\n"
+        "• `/start` - Iniciar o bot\n"
+        "• `/status` - Mostrar status atual do bot\n"
+        "• `/help` - Exibir esta mensagem de ajuda\n\n"
+        
+        "**Comandos de Gestão de Sessões:**\n"
+        "• `/start_keepa [CONTA]` - Iniciar sessão Keepa para uma conta\n"
+        "• `/test_account CONTA` - Testar login em uma conta específica\n"
+        "• `/accounts` - Listar todas as contas configuradas\n"
+        "• `/sessions` - Mostrar status detalhado das sessões ativas\n"
+        "• `/close_sessions` - Fechar todas as sessões ativas\n\n"
+        
+        "**Comandos de Produtos:**\n"
+        "• `/update ASIN PREÇO [CONTA]` - Atualizar manualmente o preço de um produto\n"
+        "• `/delete ASIN [CONTA]` - Excluir rastreamento de um produto\n"
+        "• `/clear` - Limpar cache de posts rastreados\n\n"
+        
+        "**Banco de Dados de Produtos:**\n"
+        "• `/list_products [CONTA]` - Listar produtos de uma conta específica\n"
+        "• `/product ASIN [CONTA]` - Buscar informações de um produto específico\n"
+        "• `/product_stats` - Mostrar estatísticas do banco de dados de produtos\n"
+        "• `/export_products [CONTA]` - Exportar produtos para arquivo JSON\n"
+        "• `/import_products` - Importar produtos de um arquivo JSON anexado\n"
+        "• `/debug_products CONTA` - Diagnóstico do banco de dados de produtos\n\n"
+        
+        "**Comandos de Backup:**\n"
+        "• `/backup` - Criar backup dos dados e logs\n"
+        "• `/list_backups` - Listar backups disponíveis\n"
+        "• `/download_backup NOME` - Baixar um backup específico\n"
+        "• `/delete_backup NOME` - Excluir um backup específico\n\n"
+        
+        "**Comandos Avançados:**\n"
+        "• `/recover` - Recuperar mensagens ausentes usando Pyrogram\n\n"
+        
+        "📝 **Nota:** A maioria dos comandos administrativos só pode ser executada pelo administrador configurado."
+    )
+    
+    await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
+
+# Adicionar o comando ao setup_handlers
 def setup_handlers(application):
     """Configurar todos os manipuladores do bot"""
     # Manipuladores de comando
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("clear", clear_cache_command))
     application.add_handler(CommandHandler("start_keepa", start_keepa_command))
     application.add_handler(CommandHandler("update", update_price_manual_command))
@@ -546,6 +1000,14 @@ def setup_handlers(application):
     application.add_handler(CommandHandler("download_backup", download_backup_command))
     application.add_handler(CommandHandler("delete_backup", delete_backup_command))
     
+    # Comandos do banco de dados de produtos
+    application.add_handler(CommandHandler("list_products", list_products_command))
+    application.add_handler(CommandHandler("product", get_product_command))
+    application.add_handler(CommandHandler("product_stats", product_stats_command))
+    application.add_handler(CommandHandler("export_products", export_products_command))
+    application.add_handler(CommandHandler("import_products", import_products_command))
+    application.add_handler(CommandHandler("debug_products", debug_products_command))
+    
     # Manipulador de mensagens
     application.add_handler(MessageHandler(
         filters.TEXT | filters.CAPTION, 
@@ -556,3 +1018,140 @@ def setup_handlers(application):
     application.add_handler(CommandHandler("recover", start_recovery_command))
     
     logger.info("Manipuladores configurados")
+
+# Atualização da função setup_handlers para incluir os novos comandos
+def setup_handlers(application):
+    """Configurar todos os manipuladores do bot"""
+    # Manipuladores de comando
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("clear", clear_cache_command))
+    application.add_handler(CommandHandler("start_keepa", start_keepa_command))
+    application.add_handler(CommandHandler("update", update_price_manual_command))
+    application.add_handler(CommandHandler("delete", delete_product_command))
+    application.add_handler(CommandHandler("test_account", test_account_command))
+    application.add_handler(CommandHandler("accounts", list_accounts_command))
+    application.add_handler(CommandHandler("close_sessions", close_sessions_command))
+    application.add_handler(CommandHandler("sessions", sessions_status_command))
+    
+    # Comandos de backup
+    application.add_handler(CommandHandler("backup", create_backup_command))
+    application.add_handler(CommandHandler("list_backups", list_backups_command))
+    application.add_handler(CommandHandler("download_backup", download_backup_command))
+    application.add_handler(CommandHandler("delete_backup", delete_backup_command))
+    
+    # Comandos do banco de dados de produtos
+    application.add_handler(CommandHandler("list_products", list_products_command))
+    application.add_handler(CommandHandler("product", get_product_command))
+    application.add_handler(CommandHandler("product_stats", product_stats_command))
+    application.add_handler(CommandHandler("export_products", export_products_command))
+    application.add_handler(CommandHandler("import_products", import_products_command))
+    application.add_handler(CommandHandler("debug_products", debug_products_command))
+    
+    # Manipulador de mensagens
+    application.add_handler(MessageHandler(
+        filters.TEXT | filters.CAPTION, 
+        process_message
+    ))
+    
+    # Adicionar o comando de recuperação com Pyrogram
+    application.add_handler(CommandHandler("recover", start_recovery_command))
+    
+    logger.info("Manipuladores configurados")
+        
+
+async def get_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Buscar informações detalhadas de um produto específico pelo ASIN."""
+    if not settings.ADMIN_ID or str(update.effective_user.id) != settings.ADMIN_ID:
+        await update.message.reply_text("Desculpe, apenas o administrador pode buscar produtos.")
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ Formato incorreto. Use: /product ASIN [CONTA]")
+        return
+    
+    asin = args[0].upper()
+    account_id = args[1] if len(args) > 1 else None
+    
+    # Se foi fornecida uma conta, buscar apenas nessa conta
+    if account_id:
+        if account_id not in settings.KEEPA_ACCOUNTS:
+            await update.message.reply_text(f"❌ Conta '{account_id}' não encontrada.")
+            return
+        
+        product_info = product_db.get_product(account_id, asin)
+        
+        if not product_info:
+            await update.message.reply_text(f"❌ Produto {asin} não encontrado para conta '{account_id}'.")
+            return
+        
+        # Formatar informações do produto
+        price = product_info.get("price", "?")
+        title = product_info.get("product_title", "Sem título")
+        last_updated = product_info.get("last_updated", "?")
+        
+        # Formatar data se disponível
+        if last_updated and last_updated != "?":
+            try:
+                dt = datetime.fromisoformat(last_updated)
+                last_updated = dt.strftime("%Y-%m-%d %H:%M")
+            except:
+                pass
+        
+        amazon_url = f"https://www.amazon.com.br/dp/{asin}"
+        keepa_url = f"https://keepa.com/#!product/12-{asin}"
+        
+        message = (
+            f"📦 **Informações do Produto**\n\n"
+            f"**ASIN:** {asin}\n"
+            f"**Título:** {title}\n"
+            f"**Preço:** R$ {price}\n"
+            f"**Conta:** {account_id}\n"
+            f"**Atualizado em:** {last_updated}\n\n"
+            f"**Links:**\n"
+            f"[Amazon]({amazon_url}) | [Keepa]({keepa_url})"
+        )
+        
+        await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+    else:
+        # Buscar produto em todas as contas
+        found = False
+        for acc_id in settings.KEEPA_ACCOUNTS.keys():
+            product_info = product_db.get_product(acc_id, asin)
+            
+            if product_info:
+                found = True
+                
+                # Formatar informações do produto
+                price = product_info.get("price", "?")
+                title = product_info.get("product_title", "Sem título")
+                last_updated = product_info.get("last_updated", "?")
+                
+                # Formatar data se disponível
+                if last_updated and last_updated != "?":
+                    try:
+                        dt = datetime.fromisoformat(last_updated)
+                        last_updated = dt.strftime("%Y-%m-%d %H:%M")
+                    except:
+                        pass
+                
+                amazon_url = f"https://www.amazon.com.br/dp/{asin}"
+                keepa_url = f"https://keepa.com/#!product/12-{asin}"
+                
+                message = (
+                    f"📦 **Informações do Produto**\n\n"
+                    f"**ASIN:** {asin}\n"
+                    f"**Título:** {title}\n"
+                    f"**Preço:** R$ {price}\n"
+                    f"**Conta:** {acc_id}\n"
+                    f"**Atualizado em:** {last_updated}\n\n"
+                    f"**Links:**\n"
+                    f"[Amazon]({amazon_url}) | [Keepa]({keepa_url})"
+                )
+                
+                await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+        
+        if not found:
+            await update.message.reply_text(f"❌ Produto {asin} não encontrado em nenhuma conta.")
