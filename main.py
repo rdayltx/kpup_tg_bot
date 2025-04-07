@@ -4,14 +4,20 @@ Ponto de entrada principal para o Bot de Telegram do Amazon Keepa
 """
 import os
 import asyncio
+import logging
 from bot.handlers import setup_handlers
 from config.settings import load_settings
 from data.data_manager import clean_old_entries, load_post_info, save_post_info
 from telegram.ext import Application
 from utils.logger import setup_logging, get_logger
+from utils.timezone_config import configure_timezone
+from datetime import datetime, timedelta 
 from utils.backup import create_backup, auto_cleanup_backups
 from utils.missing_products import retrieve_missing_products
 from keepa.browser_session_manager import browser_manager
+
+# Configurar timezone para Brasil antes de qualquer operação
+configure_timezone()
 
 # Configurar logging aprimorado
 setup_logging(console_output=True, file_output=True)

@@ -3,10 +3,10 @@ import os
 import json
 import glob
 import re
-from datetime import datetime
+from utils.timezone_config import get_brazil_datetime, format_brazil_datetime
 import traceback
+from datetime import datetime, timedelta
 import asyncio
-from datetime import datetime
 from telegram import Update, InputFile
 from telegram.ext import CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ParseMode

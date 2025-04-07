@@ -5,6 +5,7 @@ import json
 from utils.text_parser import extract_asin_from_text, extract_source_from_text
 from data.data_manager import load_post_info, save_post_info
 from utils.logger import get_logger
+from datetime import datetime, timedelta
 from config.settings import load_settings
 import time
 import random
@@ -182,7 +183,7 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
                             logger.info(f"Encontrado post com ASIN: {asin}, Fonte: {source}, ID: {message.id}")
                             
                             # Adicionar ao post_info
-                            timestamp = datetime.datetime.now().isoformat()
+                            timestamp = datetime.now().isoformat()
                             if hasattr(message, 'date'):
                                 timestamp = message.date.isoformat()
                             
@@ -248,7 +249,7 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
                                     logger.info(f"Encontrado post com ASIN: {asin}, Fonte: {source}, ID: {message.id}")
                                     
                                     # Adicionar ao post_info
-                                    timestamp = datetime.datetime.now().isoformat()
+                                    timestamp = datetime.now().isoformat()
                                     if hasattr(message, 'date'):
                                         timestamp = message.date.isoformat()
                                     
@@ -299,7 +300,7 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
                                             logger.info(f"Encontrado post individual com ASIN: {asin}, ID: {message.id}")
                                             
                                             # Adicionar ao post_info
-                                            timestamp = datetime.datetime.now().isoformat()
+                                            timestamp = datetime.now().isoformat()
                                             if hasattr(message, 'date'):
                                                 timestamp = message.date.isoformat()
                                             

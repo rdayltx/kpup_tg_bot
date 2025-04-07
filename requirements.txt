@@ -5,3 +5,5 @@ python-dotenv==1.0.0
 colorama==0.4.6
 pyrogram>=2.0.0
 tgcrypto>=1.2.5
+pytz>=2023.3
+python-dateutil>=2.8.2

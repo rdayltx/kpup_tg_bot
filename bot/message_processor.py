@@ -1,13 +1,14 @@
 import logging
 import asyncio
-from datetime import datetime
+from utils.timezone_config import get_brazil_datetime, datetime_to_isoformat
 import re
 from telegram import Update
+from datetime import datetime, timedelta
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from config.settings import load_settings
 from data.data_manager import load_post_info, save_post_info
-from utils.text_parser import extract_asin_from_text, extract_source_from_text, extract_price_from_comment, should_ignore_message, should_ignore_message
+from utils.text_parser import extract_asin_from_text, extract_source_from_text, extract_price_from_comment, should_ignore_message
 from keepa.browser import initialize_driver
 from keepa.api import login_to_keepa, update_keepa_product, delete_keepa_tracking
 from utils.logger import get_logger
@@ -98,10 +99,11 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         logger.info(f"Post com ASIN encontrado: {asin}, Fonte: {source}")
         
         # Armazenar post original com ASIN, Fonte e timestamp
+        # Usar o timezone do Brasil
         post_info[str(message_id)] = {
             "asin": asin,
             "source": source,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime_to_isoformat(get_brazil_datetime())
         }
         save_post_info(post_info)
     

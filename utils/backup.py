@@ -1,8 +1,9 @@
 import os
 import shutil
 import tarfile
-import datetime
 import glob
+from utils.timezone_config import get_brazil_datetime
+from datetime import datetime, timedelta
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -24,7 +25,8 @@ def create_backup(backup_dir="/app/backups", data_dir="/app/data", logs_dir="/ap
         os.makedirs(backup_dir, exist_ok=True)
         
         # Criar um timestamp para o nome do arquivo de backup
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Usar timezone do Brasil
+        timestamp = get_brazil_datetime().strftime("%Y%m%d_%H%M%S")
         backup_filename = f"keepa_bot_backup_{timestamp}.tar.gz"
         backup_path = os.path.join(backup_dir, backup_filename)
         
@@ -115,7 +117,7 @@ def list_backups(backup_dir="/app/backups"):
                 
                 # Obter hora de criação do arquivo
                 creation_time = os.path.getctime(file_path)
-                creation_datetime = datetime.datetime.fromtimestamp(creation_time)
+                creation_datetime = datetime.fromtimestamp(creation_time)
                 
                 # Obter tamanho do arquivo
                 file_size = os.path.getsize(file_path)

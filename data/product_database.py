@@ -1,9 +1,10 @@
 import json
 import os
 import logging
-from datetime import datetime
+from utils.timezone_config import get_brazil_datetime, datetime_to_isoformat
 from config.settings import load_settings
 from utils.logger import get_logger
+from datetime import datetime, timedelta
 
 logger = get_logger(__name__)
 settings = load_settings()
@@ -141,7 +142,7 @@ class ProductDatabase:
             # Atualizar informações do produto
             account_db[asin] = {
                 "price": price,
-                "last_updated": datetime.now().isoformat(),
+                "last_updated": datetime_to_isoformat(get_brazil_datetime()),
             }
             
             # Adicionar título do produto se fornecido

@@ -1,7 +1,8 @@
 import json
-from datetime import datetime, timedelta
 import os
 import shutil
+from datetime import datetime, timedelta
+from utils.timezone_config import get_brazil_datetime, localize_datetime
 from config.settings import load_settings
 from utils.logger import get_logger
 
@@ -60,13 +61,34 @@ def clean_old_entries(post_info):
     """
     Limpar entradas com mais de 2 dias
     """
-    now = datetime.now()
+    now = get_brazil_datetime()
     two_days_ago = now - timedelta(days=2)
     cleaned_info = {}
     
     for msg_id, data in post_info.items():
-        timestamp = datetime.fromisoformat(data["timestamp"])
-        if timestamp >= two_days_ago:
+        try:
+            timestamp = data["timestamp"]
+            # Converter string ISO para datetime
+            if isinstance(timestamp, str):
+                try:
+                    # Tentar converter com timezone
+                    timestamp_dt = datetime.fromisoformat(timestamp)
+                    # Localizar para o timezone do Brasil se não tiver timezone
+                    timestamp_dt = localize_datetime(timestamp_dt)
+                except ValueError:
+                    # Fallback para o formato antigo
+                    import dateutil.parser
+                    timestamp_dt = dateutil.parser.parse(timestamp)
+                    timestamp_dt = localize_datetime(timestamp_dt)
+            else:
+                # Já é um objeto datetime
+                timestamp_dt = localize_datetime(timestamp)
+                
+            if timestamp_dt >= two_days_ago:
+                cleaned_info[msg_id] = data
+        except Exception as e:
+            logger.error(f"Erro ao processar timestamp para mensagem {msg_id}: {str(e)}")
+            # Manter a entrada por segurança
             cleaned_info[msg_id] = data
             
     return cleaned_info
