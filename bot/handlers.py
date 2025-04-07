@@ -24,7 +24,7 @@ from utils.backup import create_backup, list_backups, delete_backup, auto_cleanu
 from utils.retry import async_retry
 from utils.missing_products import start_recovery_command
 from data.product_database import product_db
-from handlers.product_commands import add_product_command
+from handlers.product_commands import add_product_command, register_product_handlers
 
 from utils.logger import get_logger
 
@@ -1142,6 +1142,9 @@ def setup_handlers(application):
     
     # Novo comando para adicionar produtos aleatoriamente a uma conta
     application.add_handler(CommandHandler("add", add_product_command))
+    
+    # Registrar handlers de callback para o comando add_product
+    register_product_handlers(application)
     
     # Manipulador de mensagens
     application.add_handler(MessageHandler(
