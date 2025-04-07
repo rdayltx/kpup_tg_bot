@@ -18,6 +18,33 @@ settings = load_settings()
 # Dicionário para armazenar sessões de navegador para diferentes contas
 browser_sessions = {}
 
+
+# Função de screenshot condicional
+def save_debug_screenshot(driver, filename, force=False):
+    """
+    Salva screenshot apenas se settings.ENABLE_SCREENSHOTS for True ou force=True.
+    Loga apenas se settings.ENABLE_SCREENSHOT_LOGS for True.
+    
+    Args:
+        driver: WebDriver do Selenium
+        filename: Nome do arquivo para salvar
+        force: Forçar captura mesmo se screenshots estiverem desabilitados
+    """
+    # Verificar se devemos capturar a tela
+    if not (settings.ENABLE_SCREENSHOTS or force):
+        return
+        
+    try:
+        screenshot_path = os.path.join(os.getcwd(), filename)
+        driver.save_screenshot(screenshot_path)
+        
+        # Logar apenas se o logging de screenshots estiver habilitado
+        if settings.ENABLE_SCREENSHOT_LOGS:
+            logger.info(f"Screenshot salvo em: {screenshot_path}")
+    except Exception as e:
+        # Sempre logar erros (isso é importante para diagnóstico)
+        logger.error(f"Erro ao salvar screenshot: {str(e)}")
+
 # Funções de espera por elementos
 def wait_for_element(driver, selector, by=By.CSS_SELECTOR, timeout=20):
     return WebDriverWait(driver, timeout).until(
@@ -154,8 +181,8 @@ def login_to_keepa(driver, account_identifier=None):
             
         # Capturar screenshot para diagnóstico
         screenshot_path = os.path.join(os.getcwd(), "pre_login_screen.png")
-        driver.save_screenshot(screenshot_path)
-        logger.info(f"Screenshot de pré-login salvo em: {screenshot_path}")
+        save_debug_screenshot(driver,screenshot_path)
+        # logger.info(f"Screenshot de pré-login salvo em: {screenshot_path}")
         
         # Se estiver logado mas em uma conta diferente, deslogar primeiro
         if check_element_visible(driver, "#panelUserMenu", timeout=3):
@@ -256,14 +283,14 @@ def login_to_keepa(driver, account_identifier=None):
         if not check_element_visible(driver, "#username", timeout=5):
             logger.error("❌ Formulário de login não está visível após tentativas")
             screenshot_path = os.path.join(os.getcwd(), "login_form_error.png")
-            driver.save_screenshot(screenshot_path)
-            logger.info(f"Screenshot salvo em: {screenshot_path}")
+            save_debug_screenshot(driver,screenshot_path)
+            # logger.info(f"Screenshot salvo em: {screenshot_path}")
             return False
 
         # Verificar CAPTCHA
         if check_element_visible(driver, "iframe[title='reCAPTCHA']", timeout=3):
             logger.warning("⚠️ CAPTCHA detectado. O modo automatizado não pode prosseguir.")
-            driver.save_screenshot("captcha_detected.png")
+            save_debug_screenshot(driver,"captcha_detected.png")
             return False
 
         # Esperar explicitamente pelo campo de usuário
@@ -306,8 +333,8 @@ def login_to_keepa(driver, account_identifier=None):
 
         # Capturar screenshot para diagnóstico
         screenshot_path = os.path.join(os.getcwd(), "post_login_screen.png")
-        driver.save_screenshot(screenshot_path)
-        logger.info(f"Screenshot pós-login salvo em: {screenshot_path}")
+        save_debug_screenshot(driver,screenshot_path)
+        # logger.info(f"Screenshot pós-login salvo em: {screenshot_path}")
 
         # Verificar erros de login
         if check_element_visible(driver, "#loginError", timeout=2) and driver.find_element(By.ID, "loginError").text:
@@ -340,7 +367,7 @@ def login_to_keepa(driver, account_identifier=None):
     
     except Exception as e:
         logger.error(f"❌ Erro durante o login: {str(e)}")
-        driver.save_screenshot("login_error.png")
+        save_debug_screenshot(driver,"login_error.png")
         return False
 
 @sync_retry(max_attempts=3, delay=2)
@@ -405,8 +432,8 @@ def update_keepa_product(driver, asin, price):
             
             # Capturar screenshot para diagnóstico
             screenshot_path = os.path.join(os.getcwd(), f"tracking_tab_{asin}.png")
-            driver.save_screenshot(screenshot_path)
-            logger.info(f"Screenshot da aba de rastreamento salvo em: {screenshot_path}")
+            save_debug_screenshot(driver,screenshot_path)
+            # logger.info(f"Screenshot da aba de rastreamento salvo em: {screenshot_path}")
             
         except Exception as e:
             logger.error(f"❌ Falha ao acessar a aba de rastreamento: {str(e)}")
@@ -449,7 +476,7 @@ def update_keepa_product(driver, asin, price):
                     
                     # Capturar screenshot após preencher o preço
                     screenshot_path = os.path.join(os.getcwd(), f"price_filled_{asin}.png")
-                    driver.save_screenshot(screenshot_path)
+                    save_debug_screenshot(driver,screenshot_path)
                     
                 except Exception as price_e:
                     logger.error(f"❌ Erro ao identificar campo de preço: {str(price_e)}")
@@ -483,7 +510,7 @@ def update_keepa_product(driver, asin, price):
                 
                 # Capturar screenshot após submeter
                 screenshot_path = os.path.join(os.getcwd(), f"submit_success_{asin}.png")
-                driver.save_screenshot(screenshot_path)
+                save_debug_screenshot(driver,screenshot_path)
                 
                 time.sleep(4)
                 return True, product_title
@@ -492,7 +519,7 @@ def update_keepa_product(driver, asin, price):
                 
                 # Capturar screenshot do erro
                 screenshot_path = os.path.join(os.getcwd(), f"update_error_{asin}.png")
-                driver.save_screenshot(screenshot_path)
+                save_debug_screenshot(driver,screenshot_path)
                 
                 return False, product_title
         elif check_element_exists(driver, "#updateTracking"):
@@ -512,7 +539,7 @@ def update_keepa_product(driver, asin, price):
                 
                 # Capturar screenshot para diagnóstico
                 screenshot_path = os.path.join(os.getcwd(), f"before_price_entry_{asin}.png")
-                driver.save_screenshot(screenshot_path)
+                save_debug_screenshot(driver,screenshot_path)
                 
                 # Agora tentar encontrar o campo para o preço da Amazon
                 price_field = wait_for_element(
@@ -565,7 +592,7 @@ def update_keepa_product(driver, asin, price):
             
             # Capturar screenshot após submeter
             screenshot_path = os.path.join(os.getcwd(), f"new_alert_success_{asin}.png")
-            driver.save_screenshot(screenshot_path)
+            save_debug_screenshot(driver,screenshot_path)
             
             time.sleep(4)  # Esperar confirmação
             return True, product_title
@@ -574,14 +601,14 @@ def update_keepa_product(driver, asin, price):
             
             # Capturar screenshot do erro
             screenshot_path = os.path.join(os.getcwd(), f"create_alert_error_{asin}.png")
-            driver.save_screenshot(screenshot_path)
+            save_debug_screenshot(driver,screenshot_path)
             
             return False, product_title
 
     except Exception as e:
         logger.error(f"❌ Erro crítico: {str(e)}")
         screenshot_path = os.path.join(os.getcwd(), f"error_{asin}.png")
-        driver.save_screenshot(screenshot_path)
+        save_debug_screenshot(driver,screenshot_path)
         return False, product_title
     
     
@@ -644,7 +671,7 @@ def delete_keepa_tracking(driver, asin):
             
             # Capturar screenshot do erro
             screenshot_path = os.path.join(os.getcwd(), f"product_load_error_{asin}.png")
-            driver.save_screenshot(screenshot_path)
+            save_debug_screenshot(driver,screenshot_path)
             
             return False, None
 
@@ -659,7 +686,7 @@ def delete_keepa_tracking(driver, asin):
             
             # Capturar screenshot para diagnóstico
             screenshot_path = os.path.join(os.getcwd(), f"delete_tracking_tab_{asin}.png")
-            driver.save_screenshot(screenshot_path)
+            save_debug_screenshot(driver,screenshot_path)
             
         except Exception as e:
             logger.error(f"❌ Falha ao acessar a aba de rastreamento: {str(e)}")
@@ -671,7 +698,7 @@ def delete_keepa_tracking(driver, asin):
             
             # Capturar screenshot
             screenshot_path = os.path.join(os.getcwd(), f"no_tracking_{asin}.png")
-            driver.save_screenshot(screenshot_path)
+            save_debug_screenshot(driver,screenshot_path)
             
             return False, product_title
         
@@ -693,7 +720,7 @@ def delete_keepa_tracking(driver, asin):
             
             # Capturar screenshot após tentar excluir
             screenshot_path = os.path.join(os.getcwd(), f"after_delete_{asin}.png")
-            driver.save_screenshot(screenshot_path)
+            save_debug_screenshot(driver,screenshot_path)
             
             # Verificar se o botão sumiu (o que indica sucesso na exclusão)
             # Usamos um timeout curto porque esperamos que não encontre o elemento
@@ -709,12 +736,12 @@ def delete_keepa_tracking(driver, asin):
             
             # Capturar screenshot do erro
             screenshot_path = os.path.join(os.getcwd(), f"delete_error_{asin}.png")
-            driver.save_screenshot(screenshot_path)
+            save_debug_screenshot(driver,screenshot_path)
             
             return False, product_title
             
     except Exception as e:
         logger.error(f"❌ Erro crítico durante exclusão: {str(e)}")
         screenshot_path = f"delete_error_{asin}.png"
-        driver.save_screenshot(screenshot_path)
+        save_debug_screenshot(driver,screenshot_path)
         return False, product_title

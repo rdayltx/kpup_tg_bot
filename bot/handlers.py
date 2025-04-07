@@ -1,5 +1,10 @@
 import logging
 import os
+import json
+import glob
+import re
+from datetime import datetime
+import traceback
 import asyncio
 from datetime import datetime
 from telegram import Update, InputFile
@@ -19,6 +24,7 @@ from utils.backup import create_backup, list_backups, delete_backup, auto_cleanu
 from utils.retry import async_retry
 from utils.missing_products import start_recovery_command
 from data.product_database import product_db
+from handlers.product_commands import add_product_command
 
 from utils.logger import get_logger
 
@@ -933,6 +939,127 @@ async def debug_products_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(diagnostico, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         await update.message.reply_text(f"❌ Erro durante diagnóstico: {str(e)}")
+        
+async def search_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Comando alternativo para buscar produto pelo ASIN."""
+    # Obter o nome do comando corretamente
+    command_text = "/search"  # Valor padrão
+    command_entities = [entity for entity in update.message.entities if entity.type == "bot_command"]
+    if command_entities:
+        command_text = update.message.text[command_entities[0].offset:command_entities[0].offset + command_entities[0].length]
+        logger.info(f"Comando {command_text} chamado por {update.effective_user.id}")
+    else:
+        logger.info(f"Função de busca chamada por {update.effective_user.id}")
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(f"❌ Formato incorreto. Use: {command_text} ASIN")
+        return
+    
+    asin = args[0].upper()
+    await update.message.reply_text(f"🔍 Buscando produto com ASIN {asin}...")
+    logger.info(f"Buscando ASIN: {asin}")
+    
+    # Diretório onde os arquivos de produtos estão armazenados
+    data_dir = "/app/data"
+    
+    # Buscar produto em todos os arquivos de produtos
+    found = False
+    results = []
+    
+    try:
+        # Listar todos os arquivos products_*.json no diretório de dados
+        import os
+        import json
+        
+        logger.info(f"Verificando diretório: {data_dir}")
+        
+        if os.path.exists(data_dir) and os.path.isdir(data_dir):
+            logger.info(f"Diretório {data_dir} existe")
+            files = os.listdir(data_dir)
+            logger.info(f"Arquivos no diretório: {files}")
+            
+            product_files = [f for f in files if f.startswith("products_") and f.endswith(".json")]
+            logger.info(f"Arquivos de produtos encontrados: {product_files}")
+            
+            if not product_files:
+                await update.message.reply_text("⚠️ Nenhum arquivo de produtos encontrado.")
+                return
+            
+            for product_file in product_files:
+                # Extrair nome da conta do nome do arquivo
+                account_id = product_file.replace("products_", "").replace(".json", "")
+                file_path = os.path.join(data_dir, product_file)
+                
+                logger.info(f"Verificando arquivo: {file_path}")
+                
+                try:
+                    # Verificar se o arquivo existe e pode ser lido
+                    if not os.path.exists(file_path):
+                        logger.warning(f"Arquivo não encontrado: {file_path}")
+                        continue
+                    
+                    # Ler o arquivo JSON
+                    with open(file_path, 'r') as f:
+                        try:
+                            products = json.load(f)
+                            logger.info(f"Arquivo {product_file} contém {len(products)} produtos")
+                            
+                            # Verificar se o ASIN está no arquivo
+                            if asin in products:
+                                found = True
+                                product_info = products[asin]
+                                
+                                # Extrair informações do produto
+                                price = product_info.get("price", "?")
+                                title = product_info.get("product_title", "Sem título")
+                                last_updated = product_info.get("last_updated", "?")
+                                
+                                # Formatar data se disponível
+                                if last_updated and last_updated != "?":
+                                    try:
+                                        dt = datetime.fromisoformat(last_updated)
+                                        last_updated = dt.strftime("%Y-%m-%d %H:%M")
+                                    except:
+                                        pass
+                                
+                                # Limitar título para não ficar muito grande
+                                if len(title) > 40:
+                                    title = title[:37] + "..."
+                                
+                                results.append(
+                                    f"**Conta:** {account_id}\n" +
+                                    f"**Preço:** R$ {price}\n" +
+                                    f"**Atualizado em:** {last_updated}\n" +
+                                    f"**Título:** {title}"
+                                )
+                                logger.info(f"Produto {asin} encontrado na conta {account_id}")
+                        except json.JSONDecodeError as json_err:
+                            logger.error(f"Erro ao decodificar JSON em {product_file}: {str(json_err)}")
+                except Exception as file_err:
+                    logger.error(f"Erro ao processar arquivo {product_file}: {str(file_err)}")
+        else:
+            logger.error(f"Diretório {data_dir} não existe ou não é um diretório")
+            await update.message.reply_text(f"❌ Diretório de dados não encontrado: {data_dir}")
+            return
+        
+        # Enviar resultados da busca
+        if found:
+            amazon_url = f"https://www.amazon.com.br/dp/{asin}"
+            keepa_url = f"https://keepa.com/#!product/12-{asin}"
+            
+            message = f"🔍 **Produto encontrado**\n\n**ASIN:** {asin}\n\n"
+            message += "\n\n---\n\n".join(results)
+            message += f"\n\n**Links:**\n[Amazon]({amazon_url}) | [Keepa]({keepa_url})"
+            
+            await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+        else:
+            await update.message.reply_text(f"❌ Produto com ASIN {asin} não encontrado em nenhuma conta.")
+    
+    except Exception as e:
+        logger.error(f"Erro ao buscar produto: {str(e)}")
+        await update.message.reply_text(f"❌ Erro ao buscar produto: {str(e)}")
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Mostrar mensagem de ajuda com todos os comandos disponíveis."""
@@ -952,8 +1079,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/close_sessions` - Fechar todas as sessões ativas\n\n"
         
         "**Comandos de Produtos:**\n"
+        "• `/add ASIN PREÇO` - Adicionar produto a uma conta aleatória (não excedendo 4999 produtos)\n"
         "• `/update ASIN PREÇO [CONTA]` - Atualizar manualmente o preço de um produto\n"
         "• `/delete ASIN [CONTA]` - Excluir rastreamento de um produto\n"
+        "• `/search ASIN` - Buscar em qual conta o produto está rastreado\n"
         "• `/clear` - Limpar cache de posts rastreados\n\n"
         
         "**Banco de Dados de Produtos:**\n"
@@ -978,47 +1107,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
 
-# Adicionar o comando ao setup_handlers
-def setup_handlers(application):
-    """Configurar todos os manipuladores do bot"""
-    # Manipuladores de comando
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("status", status_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("clear", clear_cache_command))
-    application.add_handler(CommandHandler("start_keepa", start_keepa_command))
-    application.add_handler(CommandHandler("update", update_price_manual_command))
-    application.add_handler(CommandHandler("delete", delete_product_command))
-    application.add_handler(CommandHandler("test_account", test_account_command))
-    application.add_handler(CommandHandler("accounts", list_accounts_command))
-    application.add_handler(CommandHandler("close_sessions", close_sessions_command))
-    application.add_handler(CommandHandler("sessions", sessions_status_command))
-    
-    # Comandos de backup
-    application.add_handler(CommandHandler("backup", create_backup_command))
-    application.add_handler(CommandHandler("list_backups", list_backups_command))
-    application.add_handler(CommandHandler("download_backup", download_backup_command))
-    application.add_handler(CommandHandler("delete_backup", delete_backup_command))
-    
-    # Comandos do banco de dados de produtos
-    application.add_handler(CommandHandler("list_products", list_products_command))
-    application.add_handler(CommandHandler("product", get_product_command))
-    application.add_handler(CommandHandler("product_stats", product_stats_command))
-    application.add_handler(CommandHandler("export_products", export_products_command))
-    application.add_handler(CommandHandler("import_products", import_products_command))
-    application.add_handler(CommandHandler("debug_products", debug_products_command))
-    
-    # Manipulador de mensagens
-    application.add_handler(MessageHandler(
-        filters.TEXT | filters.CAPTION, 
-        process_message
-    ))
-    
-    # Adicionar o comando de recuperação com Pyrogram
-    application.add_handler(CommandHandler("recover", start_recovery_command))
-    
-    logger.info("Manipuladores configurados")
-
 # Atualização da função setup_handlers para incluir os novos comandos
 def setup_handlers(application):
     """Configurar todos os manipuladores do bot"""
@@ -1034,6 +1122,7 @@ def setup_handlers(application):
     application.add_handler(CommandHandler("accounts", list_accounts_command))
     application.add_handler(CommandHandler("close_sessions", close_sessions_command))
     application.add_handler(CommandHandler("sessions", sessions_status_command))
+    application.add_handler(CommandHandler("add", add_product_command))
     
     # Comandos de backup
     application.add_handler(CommandHandler("backup", create_backup_command))
@@ -1048,6 +1137,11 @@ def setup_handlers(application):
     application.add_handler(CommandHandler("export_products", export_products_command))
     application.add_handler(CommandHandler("import_products", import_products_command))
     application.add_handler(CommandHandler("debug_products", debug_products_command))
+    application.add_handler(CommandHandler("find", search_product_command))
+    application.add_handler(CommandHandler("search", search_product_command))
+    
+    # Novo comando para adicionar produtos aleatoriamente a uma conta
+    application.add_handler(CommandHandler("add", add_product_command))
     
     # Manipulador de mensagens
     application.add_handler(MessageHandler(

@@ -26,6 +26,9 @@ class Settings:
     HARDCODED_ID: str     # Novo atributo para o ID hardcoded
     # Mapeamento de identificadores de conta para nomes de usuário
     ACCOUNT_USERNAME_MAPPINGS: Dict[str, List[str]] = field(default_factory=dict)
+    # Configurações para screenshots
+    ENABLE_SCREENSHOTS: bool = field(default=False)
+    ENABLE_SCREENSHOT_LOGS: bool = field(default=False)
 
 def load_settings() -> Settings:
     """Carregar configurações das variáveis de ambiente"""
@@ -67,6 +70,10 @@ def load_settings() -> Settings:
         "Vermithor": ["vermithor", "pobrevermithor@gmail.com"],
     }
     
+    # Configurações de screenshots
+    enable_screenshots = os.getenv("ENABLE_SCREENSHOTS", "false").lower() in ("true", "1", "yes")
+    enable_screenshot_logs = os.getenv("ENABLE_SCREENSHOT_LOGS", "false").lower() in ("true", "1", "yes")
+    
     settings = Settings(
         TELEGRAM_BOT_TOKEN=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         SOURCE_CHAT_ID=os.getenv("SOURCE_CHAT_ID", ""),
@@ -78,7 +85,9 @@ def load_settings() -> Settings:
         DEFAULT_KEEPA_ACCOUNT=default_account,
         TARGET_CHAT_NAME=os.getenv("TARGET_CHAT_NAME", target_chat_name),  # Carrega do .env ou usa padrão
         HARDCODED_ID=os.getenv("HARDCODED_ID", hardcoded_id),             # Carrega do .env ou usa padrão
-        ACCOUNT_USERNAME_MAPPINGS=account_mappings
+        ACCOUNT_USERNAME_MAPPINGS=account_mappings,
+        ENABLE_SCREENSHOTS=enable_screenshots,
+        ENABLE_SCREENSHOT_LOGS=enable_screenshot_logs
     )
     
     return settings
