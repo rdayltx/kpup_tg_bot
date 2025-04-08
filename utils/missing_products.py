@@ -159,7 +159,7 @@ async def recover_with_pyrogram_string(session_string, chat_id, post_info):
                 logger.info("Tentando get_chat_history...")
                 
                 msg_count = 0
-                max_msgs = 20  # Definir um limite para evitar sobrecarga
+                max_msgs = 200  # Definir um limite para evitar sobrecarga
                 
                 try:
                     async for message in app.get_chat_history(chat_id, limit=max_msgs):
