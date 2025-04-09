@@ -19,3 +19,4 @@ app/raw_to_clean.py
 app/produtos.csv
 app/post_info.json
 data/post_info.json
+produtos.txt
