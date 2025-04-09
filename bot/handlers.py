@@ -1093,11 +1093,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/download_backup NOME` - Baixar um backup específico\n"
         "• `/delete_backup NOME` - Excluir um backup específico\n\n"
         
-        "• `/queue_tasks - Adicionar produtos a partir de um arquivo .txt\n"
-        "• `/tasks_status - Verificar o status das tarefas em segundo plano\n"
-        "• `/pause_tasks - Pausar o processamento de tarefas\n"
-        "• `/resume_tasks - Retomar o processamento de tarefas\n"
-        "• `/clear_tasks - Limpar a fila de tarefas\n"
+        "• `/queue_tasks` - Adicionar produtos a partir de um arquivo .txt\n"
+        "• `/tasks_status` - Verificar o status das tarefas em segundo plano\n"
+        "• `/pause_tasks` - Pausar o processamento de tarefas\n"
+        "• `/resume_tasks` - Retomar o processamento de tarefas\n"
+        "• `/clear_tasks` - Limpar a fila de tarefas\n"
         
         "**Comandos Avançados:**\n"
         "• `/recover` - Recuperar mensagens ausentes usando Pyrogram\n\n"
@@ -1138,17 +1138,13 @@ def setup_handlers(application):
     application.add_handler(CommandHandler("debug_products", debug_products_command))
     application.add_handler(CommandHandler("find", search_product_command))
     application.add_handler(CommandHandler("search", search_product_command))
-    
-    # Novo comando para adicionar produtos aleatoriamente a uma conta
-    application.add_handler(CommandHandler("add", add_product_command))
+
     
     # Registrar handlers de callback para o comando add_product
     register_product_handlers(application)
     
     # Registrar handlers de tarefas em segundo plano
     register_task_handlers(application)
-    
-    logger.info("Manipuladores configurados")
     
     # Manipulador de mensagens
     application.add_handler(MessageHandler(
