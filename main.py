@@ -98,6 +98,7 @@ def main() -> None:
         
         # Iniciar o gerenciador de tarefas em segundo plano
         await start_background_task_manager()
+        logger.info("Gerenciador de tarefas em segundo plano iniciado")
     
     application.post_init = startup_tasks
     

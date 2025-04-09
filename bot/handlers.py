@@ -1107,6 +1107,28 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
 
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Manipulador para documentos enviados ao bot
+    Armazena o último documento para uso com comandos
+    """
+    # Guarda o documento para uso futuro
+    document = update.message.document
+    if document:
+        context.bot_data['last_document'] = document
+        context.bot_data['last_document_time'] = datetime.now()
+        
+        file_name = document.file_name
+        
+        # Verificar se é um arquivo .txt e se deve processar automaticamente
+        if file_name.lower().endswith('.txt'):
+            # Informar ao usuário que pode usar o comando /queue_tasks
+            await update.message.reply_text(
+                f"📄 Arquivo {file_name} recebido!\n\n"
+                f"Para adicionar produtos deste arquivo à fila de tarefas, "
+                f"use o comando /queue_tasks"
+            )
+
 # Atualização da função setup_handlers para incluir os novos comandos
 def setup_handlers(application):
     """Configurar todos os manipuladores do bot"""
@@ -1146,14 +1168,18 @@ def setup_handlers(application):
     # Registrar handlers de tarefas em segundo plano
     register_task_handlers(application)
     
+    # Registrar handler para documentos
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    
+    # Adicionar o comando de recuperação com Pyrogram
+    application.add_handler(CommandHandler("recover", start_recovery_command))
+    
     # Manipulador de mensagens
     application.add_handler(MessageHandler(
         filters.TEXT | filters.CAPTION, 
         process_message
     ))
     
-    # Adicionar o comando de recuperação com Pyrogram
-    application.add_handler(CommandHandler("recover", start_recovery_command))
     
     logger.info("Manipuladores configurados")
         

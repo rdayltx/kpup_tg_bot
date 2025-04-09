@@ -17,7 +17,7 @@ async def queue_tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     # Verificar se um arquivo foi enviado junto com o comando
-    if not update.message.document:
+    if not update.message.document and not context.bot_data.get('last_document'):
         await update.message.reply_text(
             "❌ Por favor, envie um arquivo .txt junto com o comando no formato:\n"
             "ASIN1,preço1\n"
@@ -26,7 +26,18 @@ async def queue_tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
     
+    # Usar o documento anexado a esta mensagem ou o último documento enviado
     document = update.message.document
+    if not document:
+        # Tentar obter o último documento enviado
+        document = context.bot_data.get('last_document')
+        if not document:
+            await update.message.reply_text("❌ Nenhum arquivo encontrado. Por favor, envie um arquivo .txt")
+            return
+    else:
+        # Armazenar este documento para referência futura
+        context.bot_data['last_document'] = document
+    
     file_name = document.file_name
     
     # Verificar se é um arquivo .txt
