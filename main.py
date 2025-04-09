@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from utils.backup import create_backup, auto_cleanup_backups
 from utils.missing_products import retrieve_missing_products
 from keepa.browser_session_manager import browser_manager
+from background_tasks import start_background_task_manager
 
 # Configurar timezone para Brasil antes de qualquer operação
 configure_timezone()
@@ -94,6 +95,9 @@ def main() -> None:
     async def startup_tasks(application):
         logger.info("Executando tarefas pós-inicialização...")
         await retrieve_missing_products_on_startup(application, settings, post_info)
+        
+        # Iniciar o gerenciador de tarefas em segundo plano
+        await start_background_task_manager()
     
     application.post_init = startup_tasks
     

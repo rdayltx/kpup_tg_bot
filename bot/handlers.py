@@ -25,6 +25,9 @@ from utils.retry import async_retry
 from utils.missing_products import start_recovery_command
 from data.product_database import product_db
 from handlers.product_commands import add_product_command, register_product_handlers
+# Importar gerenciador de tarefas em segundo plano
+from background_tasks import task_manager, start_background_task_manager
+from bot.task_commands import register_task_handlers
 
 from utils.logger import get_logger
 
@@ -561,12 +564,6 @@ async def sessions_status_command(update: Update, context: ContextTypes.DEFAULT_
     )
     
     await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
-
-async def list_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Listar produtos no banco de dados para uma conta específica ou todas as contas."""
-    if not settings.ADMIN_ID or str(update.effective_user.id) != settings.ADMIN_ID:
-        await update.message.reply_text("Desculpe, apenas o administrador pode listar produtos.")
-        return
     
     # Verificar se foi especificada uma conta
     args = context.args
@@ -659,8 +656,7 @@ async def list_products_command(update: Update, context: ContextTypes.DEFAULT_TY
         message = (
             f"📊 **Estatísticas do Banco de Dados de Produtos**\n\n"
             f"**Total de produtos:** {stats['total_products']}\n\n"
-            f"**Contas:**\n{accounts_list}\n\n"
-            f"Para ver detalhes de uma conta específica, use:\n`/list_products NOME_DA_CONTA`"
+            f"**Contas:**\n{accounts_list}"
         )
         
         await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
@@ -714,7 +710,6 @@ async def product_stats_command(update: Update, context: ContextTypes.DEFAULT_TY
         f"**Total de produtos:** {stats['total_products']}\n"
         f"**Última atualização:** {last_update}\n\n"
         f"**Contas:**\n{accounts_list}\n\n"
-        f"Para ver produtos de uma conta específica, use:\n`/list_products NOME_DA_CONTA`\n"
         f"Para buscar um produto específico, use:\n`/product ASIN [CONTA]`"
     )
     
@@ -1086,7 +1081,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/clear` - Limpar cache de posts rastreados\n\n"
         
         "**Banco de Dados de Produtos:**\n"
-        "• `/list_products [CONTA]` - Listar produtos de uma conta específica\n"
         "• `/product ASIN [CONTA]` - Buscar informações de um produto específico\n"
         "• `/product_stats` - Mostrar estatísticas do banco de dados de produtos\n"
         "• `/export_products [CONTA]` - Exportar produtos para arquivo JSON\n"
@@ -1098,6 +1092,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/list_backups` - Listar backups disponíveis\n"
         "• `/download_backup NOME` - Baixar um backup específico\n"
         "• `/delete_backup NOME` - Excluir um backup específico\n\n"
+        
+        "• `/queue_tasks - Adicionar produtos a partir de um arquivo .txt\n"
+        "• `/tasks_status - Verificar o status das tarefas em segundo plano\n"
+        "• `/pause_tasks - Pausar o processamento de tarefas\n"
+        "• `/resume_tasks - Retomar o processamento de tarefas\n"
+        "• `/clear_tasks - Limpar a fila de tarefas\n"
         
         "**Comandos Avançados:**\n"
         "• `/recover` - Recuperar mensagens ausentes usando Pyrogram\n\n"
@@ -1131,7 +1131,6 @@ def setup_handlers(application):
     application.add_handler(CommandHandler("delete_backup", delete_backup_command))
     
     # Comandos do banco de dados de produtos
-    application.add_handler(CommandHandler("list_products", list_products_command))
     application.add_handler(CommandHandler("product", get_product_command))
     application.add_handler(CommandHandler("product_stats", product_stats_command))
     application.add_handler(CommandHandler("export_products", export_products_command))
@@ -1145,6 +1144,11 @@ def setup_handlers(application):
     
     # Registrar handlers de callback para o comando add_product
     register_product_handlers(application)
+    
+    # Registrar handlers de tarefas em segundo plano
+    register_task_handlers(application)
+    
+    logger.info("Manipuladores configurados")
     
     # Manipulador de mensagens
     application.add_handler(MessageHandler(
