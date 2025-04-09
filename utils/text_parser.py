@@ -16,7 +16,7 @@ def should_ignore_message(text):
     Returns:
         bool: True se a mensagem deve ser ignorada, False caso contrário
     """
-    ignore_keywords = ["recente", "marketplace", "marktplace"]
+    ignore_keywords = ["recente", "marketplace", "marktplace", "regional", "acabou", "esgotou", "sem estoque"]
     
     # Converter para lowercase para comparação insensível a maiúsculas/minúsculas
     lower_text = text.lower()
