@@ -1,4 +1,5 @@
 # migrate_timezone_fixed.py
+#   python3 csv_to_db.py arquivo.csv ID_DA_CONTA
 # Script corrigido para migrar timestamps existentes para o timezone do Brasil
 
 import os

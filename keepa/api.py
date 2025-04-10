@@ -376,10 +376,18 @@ def update_keepa_product(driver, asin, price):
     Atualizar preço-alvo para um produto no Keepa
     
     Returns:
-        tuple: (success, product_title)
+        tuple: (success, product_title, error_code)
+            success: True se a operação foi bem-sucedida, False caso contrário
+            product_title: Título do produto (se disponível)
+            error_code: Um dos seguintes valores:
+                None - Sucesso ou erro não categorizado
+                "LIMIT_REACHED" - Limite de rastreamento atingido (5000)
+                "PAGE_ERROR" - Erro ao carregar a página
+                "FORM_ERROR" - Erro no formulário de rastreamento
     """
     logger.info(f"Atualizando produto ASIN {asin} com preço {price} (tipo: {type(price).__name__})")
     product_title = None
+    error_code = None
     
     # Garantir que o preço seja uma string
     if not isinstance(price, str):
@@ -423,7 +431,8 @@ def update_keepa_product(driver, asin, price):
                         logger.warning(f"Não foi possível obter o título do produto {asin}: {str(e)}")
         except TimeoutException:
             logger.warning(f"⚠️ A página do produto para {asin} não carregou corretamente")
-            return False, None
+            error_code = "PAGE_ERROR"
+            return False, None, error_code
 
         # Clicar na aba de rastreamento
         try:
@@ -433,11 +442,11 @@ def update_keepa_product(driver, asin, price):
             # Capturar screenshot para diagnóstico
             screenshot_path = os.path.join(os.getcwd(), f"tracking_tab_{asin}.png")
             save_debug_screenshot(driver,screenshot_path)
-            # logger.info(f"Screenshot da aba de rastreamento salvo em: {screenshot_path}")
             
         except Exception as e:
             logger.error(f"❌ Falha ao acessar a aba de rastreamento: {str(e)}")
-            return False, product_title
+            error_code = "PAGE_ERROR"
+            return False, product_title, error_code
 
         # Verificar se o rastreamento já existe
         if settings.UPDATE_EXISTING_TRACKING and check_element_exists(driver, "#updateTracking"):
@@ -501,19 +510,70 @@ def update_keepa_product(driver, asin, price):
                         logger.info(f"Campo de preço preenchido com método alternativo: {price}")
                     except Exception as old_e:
                         logger.error(f"❌ Método alternativo também falhou: {str(old_e)}")
-                        return False, product_title
+                        error_code = "FORM_ERROR"
+                        return False, product_title, error_code
                 
                 # Enviar atualização
                 btn_submit = wait_for_element(driver, "#submitTracking", timeout=8)
                 driver.execute_script("arguments[0].click();", btn_submit)
-                logger.info(f"✅ Alerta atualizado com sucesso para {asin}")
+                logger.info(f"Botão de envio clicado para {asin}")
+                
+                # Verificar se apareceu o popup de limite atingido após clicar no botão de submit
+                time.sleep(2)  # Esperar pelo possível popup
+                if check_element_visible(driver, "div.generalOverlay[style*='display: block']", timeout=3):
+                    # Verificar se é o popup específico de limite atingido
+                    limit_reached = False
+                    
+                    # Verificar pelo título do popup
+                    try:
+                        popup_title = driver.find_element(By.ID, "popupTitle").text
+                        if "Tracking Limit Reached" in popup_title:
+                            limit_reached = True
+                    except:
+                        pass
+                        
+                    # Verificar pelo conteúdo da mensagem
+                    if not limit_reached:
+                        try:
+                            popup_message = driver.find_element(By.ID, "popupMessage").text
+                            if "maximum of 5000 trackings" in popup_message:
+                                limit_reached = True
+                        except:
+                            pass
+                    
+                    # Verificar pelo texto geral do overlay
+                    if not limit_reached:
+                        try:
+                            overlay_content = driver.find_element(By.CSS_SELECTOR, "div.generalOverlay div.text_long").text
+                            if "5000 trackings" in overlay_content or "Tracking Limit Reached" in overlay_content:
+                                limit_reached = True
+                        except:
+                            pass
+                            
+                    if limit_reached:
+                        logger.error(f"❌ Limite de rastreamento atingido para ASIN {asin}")
+                        
+                        # Capturar screenshot do erro
+                        screenshot_path = os.path.join(os.getcwd(), f"tracking_limit_{asin}.png")
+                        save_debug_screenshot(driver, screenshot_path, force=True)
+                        
+                        # Tentar fechar o popup
+                        try:
+                            close_button = driver.find_element(By.ID, "shareChartOverlay-close")
+                            driver.execute_script("arguments[0].click();", close_button)
+                            time.sleep(1)
+                        except:
+                            pass
+                        
+                        error_code = "LIMIT_REACHED"
+                        return False, product_title, error_code
                 
                 # Capturar screenshot após submeter
                 screenshot_path = os.path.join(os.getcwd(), f"submit_success_{asin}.png")
                 save_debug_screenshot(driver,screenshot_path)
                 
-                time.sleep(4)
-                return True, product_title
+                time.sleep(3)
+                return True, product_title, None
             except Exception as e:
                 logger.error(f"❌ Erro ao atualizar alerta: {str(e)}")
                 
@@ -521,10 +581,11 @@ def update_keepa_product(driver, asin, price):
                 screenshot_path = os.path.join(os.getcwd(), f"update_error_{asin}.png")
                 save_debug_screenshot(driver,screenshot_path)
                 
-                return False, product_title
+                error_code = "FORM_ERROR"
+                return False, product_title, error_code
         elif check_element_exists(driver, "#updateTracking"):
             logger.info(f"✅ Alerta já existe para {asin}, mas não foi atualizado porque UPDATE_EXISTING_TRACKING é falso")
-            return True, product_title
+            return True, product_title, None
 
         # Criar novo alerta se não existir ou se UPDATE_EXISTING_TRACKING for falso
         try:
@@ -583,19 +644,75 @@ def update_keepa_product(driver, asin, price):
                     logger.info(f"Campo de preço preenchido com método alternativo: {price}")
                 except Exception as old_e:
                     logger.error(f"❌ Método alternativo também falhou: {str(old_e)}")
-                    return False, product_title
+                    error_code = "FORM_ERROR"
+                    return False, product_title, error_code
             
             # Tentar criar novo alerta
             btn_submit = wait_for_element(driver, "#submitTracking", timeout=8)
             driver.execute_script("arguments[0].click();", btn_submit)
+            logger.info(f"Botão de submissão clicado para {asin}")
+            
+            # Esperar um pouco para que qualquer popup apareça
+            time.sleep(2)
+            
+            # Verificar se apareceu o popup de limite atingido após clicar no botão de submit
+            if check_element_visible(driver, "div.generalOverlay[style*='display: block']", timeout=3):
+                # Verificar se é o popup específico de limite atingido
+                limit_reached = False
+                
+                # Verificar pelo título do popup
+                try:
+                    popup_title = driver.find_element(By.ID, "popupTitle").text
+                    if "Tracking Limit Reached" in popup_title:
+                        limit_reached = True
+                except:
+                    pass
+                    
+                # Verificar pelo conteúdo da mensagem
+                if not limit_reached:
+                    try:
+                        popup_message = driver.find_element(By.ID, "popupMessage").text
+                        if "maximum of 5000 trackings" in popup_message:
+                            limit_reached = True
+                    except:
+                        pass
+                
+                # Verificar pelo texto geral do overlay
+                if not limit_reached:
+                    try:
+                        overlay_content = driver.find_element(By.CSS_SELECTOR, "div.generalOverlay div.text_long").text
+                        if "5000 trackings" in overlay_content or "Tracking Limit Reached" in overlay_content:
+                            limit_reached = True
+                    except:
+                        pass
+                        
+                if limit_reached:
+                    logger.error(f"❌ Limite de rastreamento atingido para ASIN {asin}")
+                    
+                    # Capturar screenshot do popup
+                    screenshot_path = os.path.join(os.getcwd(), f"tracking_limit_{asin}.png")
+                    save_debug_screenshot(driver, screenshot_path, force=True)
+                    
+                    # Tentar fechar o popup
+                    try:
+                        close_button = driver.find_element(By.ID, "shareChartOverlay-close")
+                        driver.execute_script("arguments[0].click();", close_button)
+                        time.sleep(1)
+                    except:
+                        pass
+                    
+                    error_code = "LIMIT_REACHED"
+                    return False, product_title, error_code
+            
+            # Se não encontrou popup de erro, considera sucesso
             logger.info(f"✅ Novo alerta criado para {asin}")
             
             # Capturar screenshot após submeter
             screenshot_path = os.path.join(os.getcwd(), f"new_alert_success_{asin}.png")
             save_debug_screenshot(driver,screenshot_path)
             
-            time.sleep(4)  # Esperar confirmação
-            return True, product_title
+            time.sleep(3)  # Esperar confirmação
+            return True, product_title, None
         except Exception as e:
             logger.error(f"❌ Erro ao criar alerta: {str(e)}")
             
@@ -603,13 +720,14 @@ def update_keepa_product(driver, asin, price):
             screenshot_path = os.path.join(os.getcwd(), f"create_alert_error_{asin}.png")
             save_debug_screenshot(driver,screenshot_path)
             
-            return False, product_title
+            error_code = "FORM_ERROR"
+            return False, product_title, error_code
 
     except Exception as e:
         logger.error(f"❌ Erro crítico: {str(e)}")
         screenshot_path = os.path.join(os.getcwd(), f"error_{asin}.png")
         save_debug_screenshot(driver,screenshot_path)
-        return False, product_title
+        return False, product_title, None
     
     
 @sync_retry(max_attempts=3, delay=2)

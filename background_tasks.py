@@ -13,6 +13,8 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 settings = load_settings()
 
+MAX_PRODUCTS_PER_ACCOUNT = 4995
+
 # Singleton para gerenciar tarefas em background
 class BackgroundTaskManager:
     _instance = None
@@ -30,6 +32,7 @@ class BackgroundTaskManager:
             cls._instance.last_run_time = None
             cls._instance.task_lock = asyncio.Lock()
             cls._instance.queue_file = "/app/data/task_queue.txt"
+            cls._instance.task_metadata = {}  # Novo: armazenar metadados de tentativas por tarefa
             cls._instance.load_queue()
         return cls._instance
     
@@ -112,6 +115,8 @@ class BackgroundTaskManager:
         queue_length = len(self.queue)
         self.queue = []
         self.save_queue()
+        # Limpar também os metadados de tarefas
+        self.task_metadata = {}
         return queue_length
     
     def pause_processing(self):
@@ -137,6 +142,7 @@ class BackgroundTaskManager:
             "success_count": self.success_count,
             "fail_count": self.fail_count,
             "last_run_time": self.last_run_time,
+            "tasks_with_attempts": len(self.task_metadata) if hasattr(self, 'task_metadata') else 0
         }
     
     async def process_single_task(self):
@@ -152,28 +158,114 @@ class BackgroundTaskManager:
             self.current_task = f"{asin} ({price})"
             self.task_count += 1
             
+            # Inicializar metadados para esta tarefa se não existir
+            task_key = f"{asin}_{price}"
+            if not hasattr(self, 'task_metadata'):
+                self.task_metadata = {}
+                
+            if task_key not in self.task_metadata:
+                self.task_metadata[task_key] = {
+                    'attempts': 0,
+                    'tried_accounts': set(),
+                    'accounts_with_limit': set(),  # Nova propriedade para contas com limite atingido
+                    'last_attempt': None
+                }
+            
+            # Atualizar metadados da tarefa
+            self.task_metadata[task_key]['attempts'] += 1
+            self.task_metadata[task_key]['last_attempt'] = datetime.now()
+            
+            # Verificar se atingiu número máximo de tentativas
+            max_attempts = 5  # Limite de tentativas para o mesmo ASIN
+            if self.task_metadata[task_key]['attempts'] > max_attempts:
+                logger.warning(f"ASIN {asin} excedeu o limite de {max_attempts} tentativas. Removendo da fila.")
+                self.fail_count += 1
+                if task_key in self.task_metadata:
+                    del self.task_metadata[task_key]
+                self.save_queue()
+                return True  # Tarefa processada (descartada por excesso de tentativas)
+            
             try:
-                logger.info(f"Processando tarefa: adicionar ASIN {asin} com preço {price}")
+                logger.info(f"Processando tarefa: adicionar ASIN {asin} com preço {price} (tentativa {self.task_metadata[task_key]['attempts']})")
                 
                 # Algoritmo para escolher conta menos utilizada
                 accounts_usage = {}
-                for account_id in settings.KEEPA_ACCOUNTS.keys():
-                    products = product_db.get_all_products(account_id)
-                    accounts_usage[account_id] = len(products) if products else 0
+                eligible_accounts = []
+                tried_accounts = self.task_metadata[task_key]['tried_accounts']
+                accounts_with_limit = self.task_metadata[task_key]['accounts_with_limit']
                 
-                # Ordenar contas pelo número de produtos (menos produtos primeiro)
-                sorted_accounts = sorted(accounts_usage.items(), key=lambda x: x[1])
+                # Verificar cada conta e sua contagem de produtos
+                for account_id in settings.KEEPA_ACCOUNTS.keys():
+                    # Pular contas que já foram tentadas para este ASIN
+                    if account_id in tried_accounts and len(tried_accounts) < len(settings.KEEPA_ACCOUNTS):
+                        logger.info(f"Pulando conta {account_id} pois já foi tentada para o ASIN {asin}")
+                        continue
+                    
+                    # Pular contas que já atingiram o limite para este ASIN
+                    if account_id in accounts_with_limit:
+                        logger.info(f"Pulando conta {account_id} pois já atingiu o limite de rastreamento para o ASIN {asin}")
+                        continue
+                        
+                    products = product_db.get_all_products(account_id)
+                    product_count = len(products) if products else 0
+                    accounts_usage[account_id] = product_count
+                    
+                    # Verificar se está abaixo do limite seguro
+                    if product_count < MAX_PRODUCTS_PER_ACCOUNT:
+                        eligible_accounts.append((account_id, product_count))
+                
+                # Verificar se há contas elegíveis
+                if not eligible_accounts:
+                    # Se já tentamos todas as contas disponíveis ou todas atingiram limite
+                    total_accounts = len(settings.KEEPA_ACCOUNTS)
+                    if len(tried_accounts) + len(accounts_with_limit) >= total_accounts:
+                        logger.warning(f"Todas as contas foram tentadas ou atingiram limite para ASIN {asin}. Removendo da fila.")
+                        self.fail_count += 1
+                        if task_key in self.task_metadata:
+                            del self.task_metadata[task_key]
+                        return True  # Tarefa processada (falha em todas as contas)
+                    else:
+                        logger.warning("Todas as contas elegíveis atingiram o limite seguro de produtos. Recolocando na fila.")
+                        self.queue.append((asin, price))
+                        self.save_queue()
+                        # Pausar o processamento temporariamente para evitar ciclos infinitos
+                        self.is_paused = True
+                        logger.info("Processamento de tarefas pausado devido a todas as contas estarem no limite")
+                        return False
+                
+                # Ordenar contas elegíveis pelo número de produtos (menos produtos primeiro)
+                eligible_accounts.sort(key=lambda x: x[1])
+                
+                # Selecionar uma conta que não tenha sido tentada anteriormente se possível
+                untried_accounts = [(acc_id, count) for acc_id, count in eligible_accounts 
+                                    if acc_id not in tried_accounts]
+                
+                # Escolher uma conta das não tentadas, ou das elegíveis se todas já foram tentadas
+                selection_pool = untried_accounts if untried_accounts else eligible_accounts
                 
                 # Escolher uma conta aleatória entre as 3 menos utilizadas (se disponíveis)
-                selection_pool = sorted_accounts[:min(3, len(sorted_accounts))]
+                selection_pool = selection_pool[:min(3, len(selection_pool))]
                 chosen_account, current_count = random.choice(selection_pool)
                 
-                logger.info(f"Escolhida conta {chosen_account} com {current_count} produtos")
+                # Adicionar à lista de contas tentadas
+                self.task_metadata[task_key]['tried_accounts'].add(chosen_account)
+                
+                logger.info(f"Escolhida conta {chosen_account} com {current_count}/{MAX_PRODUCTS_PER_ACCOUNT} produtos (tentativa {self.task_metadata[task_key]['attempts']})")
+                
+                # Verificação final para garantir que não ultrapassamos o limite
+                if current_count >= MAX_PRODUCTS_PER_ACCOUNT:
+                    logger.warning(f"Conta {chosen_account} atingiu limite de produtos. Recolocando na fila.")
+                    # Recolocar na fila
+                    self.queue.append((asin, price))
+                    self.save_queue()
+                    return False
                 
                 # Verificar se o produto já existe
                 if product_db.get_product(chosen_account, asin):
                     logger.info(f"ASIN {asin} já existe na conta {chosen_account}")
                     self.success_count += 1
+                    if task_key in self.task_metadata:
+                        del self.task_metadata[task_key]
                     return True
                 
                 # Obter uma sessão do navegador
@@ -181,18 +273,42 @@ class BackgroundTaskManager:
                 
                 if session and session.is_logged_in:
                     # Usar a sessão existente
-                    success, product_title = update_keepa_product(session.driver, asin, price)
+                    success, product_title, error_code = update_keepa_product(session.driver, asin, price)
                     
                     if success:
                         # Adicionar ao banco de dados
                         product_db.update_product(chosen_account, asin, price, product_title)
                         logger.info(f"✅ ASIN {asin} adicionado com sucesso à conta {chosen_account}")
                         self.success_count += 1
+                        # Limpar metadados já que teve sucesso
+                        if task_key in self.task_metadata:
+                            del self.task_metadata[task_key]
                     else:
                         logger.error(f"❌ Falha ao adicionar ASIN {asin} à conta {chosen_account}")
-                        self.fail_count += 1
-                        # Recolocar na fila para tentar novamente depois
-                        self.queue.append((asin, price))
+                        
+                        # Verificar código de erro específico
+                        if error_code == "LIMIT_REACHED":
+                            logger.warning(f"Conta {chosen_account} atingiu limite de rastreamento (5000). "
+                                        f"Marcando como não elegível e tentando outra conta na próxima execução.")
+                            # Adicionar à lista de contas com limite atingido para este ASIN
+                            self.task_metadata[task_key]['accounts_with_limit'].add(chosen_account)
+                            # Recolocar na fila para tentar com outra conta
+                            self.queue.append((asin, price))
+                        elif error_code == "PAGE_ERROR":
+                            logger.warning(f"Erro de página para ASIN {asin}. Tentando novamente mais tarde.")
+                            # Recolocar no final da fila
+                            self.queue.append((asin, price))
+                            self.fail_count += 1
+                        elif error_code == "FORM_ERROR":
+                            logger.warning(f"Erro no formulário para ASIN {asin}. Tentando novamente mais tarde.")
+                            # Recolocar no final da fila
+                            self.queue.append((asin, price))
+                            self.fail_count += 1
+                        else:
+                            # Erro genérico
+                            logger.warning(f"Erro não categorizado para ASIN {asin}. Tentando novamente mais tarde.")
+                            self.queue.append((asin, price))
+                            self.fail_count += 1
                 else:
                     logger.error(f"❌ Não foi possível obter sessão válida para conta {chosen_account}")
                     self.fail_count += 1
@@ -206,7 +322,7 @@ class BackgroundTaskManager:
                 self.last_run_time = datetime.now().isoformat()
                 
                 return True
-                
+                    
             except Exception as e:
                 logger.error(f"Erro ao processar tarefa para ASIN {asin}: {str(e)}")
                 self.fail_count += 1
@@ -229,7 +345,8 @@ class BackgroundTaskManager:
             while self.is_running:
                 # Verificar se o processamento está pausado
                 if self.is_paused:
-                    await asyncio.sleep(10)
+                    logger.info("Processamento pausado. Verificando novamente em 30 segundos.")
+                    await asyncio.sleep(30)
                     continue
                 
                 # Verificar se há tarefas na fila
@@ -238,8 +355,6 @@ class BackgroundTaskManager:
                     await asyncio.sleep(30)
                     continue
                 
-                # Verificar se o bot está ocioso (sem atividade recente)
-                # Aqui usamos um valor fixo, mas poderia verificar atividade do bot
                 # Processar uma tarefa
                 await self.process_single_task()
                 
