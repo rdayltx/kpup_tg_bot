@@ -220,8 +220,9 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
             driver = session.driver
             logger.info(f"Usando sessão existente para conta {account_identifier}")
         
-        # Executar a atualização
-        update_success, product_title = update_keepa_product(driver, asin, price)
+        # Executar a atualização - CORRIGIDO PARA 3 VALORES DE RETORNO
+        update_success, product_title, error_code = update_keepa_product(driver, asin, price)
+        
         if update_success:
             logger.info(f"✅ ASIN {asin} atualizado com sucesso no Keepa com preço {price} usando conta {account_identifier}")
             
@@ -236,13 +237,22 @@ async def handle_price_update(context, asin, source, comment, price, account_ide
                     text=f"✅ ASIN {asin} atualizado com preço {price} usando conta {account_identifier}"
                 )
         else:
-            logger.error(f"❌ Falha ao atualizar ASIN {asin} no Keepa")
+            # Logar o código de erro se disponível
+            error_message = f"❌ Falha ao atualizar ASIN {asin} no Keepa"
+            if error_code:
+                error_message += f" (Erro: {error_code})"
+                
+                # Tratar erros específicos
+                if error_code == "LIMIT_REACHED":
+                    error_message = f"❌ Limite de rastreamento atingido para ASIN {asin} na conta {account_identifier}"
+            
+            logger.error(error_message)
             
             # Notificar administrador
             if settings.ADMIN_ID:
                 await context.bot.send_message(
                     chat_id=settings.ADMIN_ID,
-                    text=f"❌ Falha ao atualizar ASIN {asin} no Keepa usando conta {account_identifier}"
+                    text=f"❌ Falha ao atualizar ASIN {asin} no Keepa usando conta {account_identifier}: {error_code or 'erro desconhecido'}"
                 )
             pass
                 
@@ -360,8 +370,27 @@ async def handle_delete_comment(context, asin, source, comment, user_name):
             driver = session.driver
             logger.info(f"Usando sessão existente para conta {account_identifier}")
         
-        # Executar a exclusão
-        delete_success, product_title = delete_keepa_tracking(driver, asin)
+        # Executar a exclusão - usando 3 valores de retorno (mesmo que delete_keepa_tracking ainda não tenha sido atualizada)
+        # Ajustado para detectar erro de "too many values to unpack"
+        try:
+            result = delete_keepa_tracking(driver, asin)
+            if isinstance(result, tuple):
+                if len(result) == 3:  # Função já retorna 3 valores
+                    delete_success, product_title, error_code = result
+                else:  # Versão antiga, retorna apenas 2 valores
+                    delete_success, product_title = result
+                    error_code = None
+            else:  # Improvável, mas por segurança
+                delete_success = result
+                product_title = None
+                error_code = None
+        except ValueError as e:
+            if "too many values to unpack" in str(e):
+                # Chamar novamente mas capturar 3 valores
+                delete_success, product_title, error_code = delete_keepa_tracking(driver, asin)
+            else:
+                raise
+                
         if delete_success:
             logger.info(f"✅ Rastreamento do ASIN {asin} excluído com sucesso usando conta {account_identifier}")
             
@@ -372,7 +401,11 @@ async def handle_delete_comment(context, asin, source, comment, user_name):
                     text=f"✅ Rastreamento do ASIN {asin} excluído usando conta {account_identifier}"
                 )
         else:
-            logger.error(f"❌ Falha ao excluir rastreamento do ASIN {asin}")
+            error_message = f"❌ Falha ao excluir rastreamento do ASIN {asin}"
+            if error_code:
+                error_message += f" (Erro: {error_code})"
+            
+            logger.error(error_message)
             
             # Notificar administrador
             if settings.ADMIN_ID:

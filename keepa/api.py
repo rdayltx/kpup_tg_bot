@@ -740,10 +740,12 @@ def delete_keepa_tracking(driver, asin):
         asin: ASIN do produto para excluir o rastreamento
         
     Returns:
-        tuple: (success, product_title) - Se a exclusão foi bem-sucedida e o título do produto (se disponível)
+        tuple: (success, product_title, error_code) - Se a exclusão foi bem-sucedida, o título do produto (se disponível),
+               e um código de erro (se houver falha)
     """
     logger.info(f"🗑️ Tentando excluir rastreamento para ASIN {asin}")
     product_title = None
+    error_code = None
     
     try:
         # Navegar para a página do produto
@@ -791,7 +793,8 @@ def delete_keepa_tracking(driver, asin):
             screenshot_path = os.path.join(os.getcwd(), f"product_load_error_{asin}.png")
             save_debug_screenshot(driver,screenshot_path)
             
-            return False, None
+            error_code = "PAGE_ERROR"
+            return False, None, error_code
 
         # Clicar na aba de rastreamento
         try:
@@ -808,7 +811,8 @@ def delete_keepa_tracking(driver, asin):
             
         except Exception as e:
             logger.error(f"❌ Falha ao acessar a aba de rastreamento: {str(e)}")
-            return False, product_title
+            error_code = "TAB_ERROR"
+            return False, product_title, error_code
 
         # Verificar se o rastreamento existe (botão deleteTracking deve estar presente)
         if not check_element_exists(driver, "#deleteTracking"):
@@ -818,7 +822,8 @@ def delete_keepa_tracking(driver, asin):
             screenshot_path = os.path.join(os.getcwd(), f"no_tracking_{asin}.png")
             save_debug_screenshot(driver,screenshot_path)
             
-            return False, product_title
+            error_code = "NOT_FOUND"
+            return False, product_title, error_code
         
         # Rastreamento existe, tentar excluir
         logger.info("Rastreamento existe, tentando excluir")
@@ -844,10 +849,11 @@ def delete_keepa_tracking(driver, asin):
             # Usamos um timeout curto porque esperamos que não encontre o elemento
             if check_element_exists(driver, "#deleteTracking", timeout=2):
                 logger.warning(f"⚠️ Botão de exclusão ainda presente após clicar, a exclusão pode ter falhado")
-                return False, product_title
+                error_code = "DELETE_FAILED"
+                return False, product_title, error_code
             else:
                 logger.info(f"✅ Rastreamento excluído com sucesso para ASIN {asin} (botão de exclusão não mais presente)")
-                return True, product_title
+                return True, product_title, None
                 
         except Exception as e:
             logger.error(f"❌ Erro ao clicar no botão de exclusão: {str(e)}")
@@ -856,10 +862,11 @@ def delete_keepa_tracking(driver, asin):
             screenshot_path = os.path.join(os.getcwd(), f"delete_error_{asin}.png")
             save_debug_screenshot(driver,screenshot_path)
             
-            return False, product_title
+            error_code = "DELETE_ERROR"
+            return False, product_title, error_code
             
     except Exception as e:
         logger.error(f"❌ Erro crítico durante exclusão: {str(e)}")
         screenshot_path = f"delete_error_{asin}.png"
         save_debug_screenshot(driver,screenshot_path)
-        return False, product_title
+        return False, product_title, None
