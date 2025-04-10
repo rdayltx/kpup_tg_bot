@@ -69,7 +69,8 @@ async def update_product_in_account(context, account_id, asin, price):
         driver = session.driver
         logger.info(f"Usando sessão existente para a conta {account_id}")
         
-        success, product_title = update_keepa_product(driver, asin, price)
+        # Atualizado para lidar com o novo formato de retorno (3 valores)
+        success, product_title, error_code = update_keepa_product(driver, asin, price)
         
         if success:
             # Atualizar o banco de dados de produtos
@@ -77,6 +78,9 @@ async def update_product_in_account(context, account_id, asin, price):
             logger.info(f"✅ Banco de dados de produtos atualizado para ASIN {asin}, conta {account_id}")
             return True, product_title
         else:
+            # Logar o código de erro se disponível
+            if error_code:
+                logger.warning(f"Erro ao atualizar ASIN {asin}: {error_code}")
             return False, None
     else:
         # Criar uma nova instância de driver para esta operação
@@ -88,7 +92,8 @@ async def update_product_in_account(context, account_id, asin, price):
                 logger.error(f"❌ Falha ao fazer login no Keepa com conta '{account_id}'.")
                 return False, None
             
-            success, product_title = update_keepa_product(driver, asin, price)
+            # Atualizado para lidar com o novo formato de retorno (3 valores)
+            success, product_title, error_code = update_keepa_product(driver, asin, price)
             
             if success:
                 # Atualizar o banco de dados de produtos
@@ -96,6 +101,9 @@ async def update_product_in_account(context, account_id, asin, price):
                 logger.info(f"✅ Banco de dados de produtos atualizado para ASIN {asin}, conta {account_id}")
                 return True, product_title
             else:
+                # Logar o código de erro se disponível
+                if error_code:
+                    logger.warning(f"Erro ao atualizar ASIN {asin}: {error_code}")
                 return False, None
         finally:
             # Importante: Sempre encerrar o driver para liberar recursos
@@ -152,7 +160,8 @@ async def add_new_product(update, context, asin, price, is_query=False, query=No
         driver = session.driver
         logger.info(f"Usando sessão existente para a conta {chosen_account}")
         
-        success, product_title = update_keepa_product(driver, asin, price)
+        # Atualizado para lidar com o novo formato de retorno (3 valores)
+        success, product_title, error_code = update_keepa_product(driver, asin, price)
         
         if success:
             # Atualizar o banco de dados de produtos
@@ -176,11 +185,20 @@ async def add_new_product(update, context, asin, price, is_query=False, query=No
             else:
                 await update.message.reply_text(product_info, parse_mode="Markdown", disable_web_page_preview=True)
         else:
-            message = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'."
+            # Formatar mensagem de erro com código se disponível
+            error_msg = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'."
+            if error_code:
+                if error_code == "LIMIT_REACHED":
+                    error_msg = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'. A conta atingiu o limite de rastreamentos (5000)."
+                elif error_code == "PAGE_ERROR":
+                    error_msg = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'. Erro ao carregar página."
+                elif error_code == "FORM_ERROR":
+                    error_msg = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'. Erro no formulário."
+            
             if is_query:
-                await query.edit_message_text(message)
+                await query.edit_message_text(error_msg)
             else:
-                await update.message.reply_text(message)
+                await update.message.reply_text(error_msg)
     else:
         # Criar uma nova instância de driver para esta operação
         driver = initialize_driver(chosen_account)
@@ -195,7 +213,8 @@ async def add_new_product(update, context, asin, price, is_query=False, query=No
                     await update.message.reply_text(message)
                 return
             
-            success, product_title = update_keepa_product(driver, asin, price)
+            # Atualizado para lidar com o novo formato de retorno (3 valores)
+            success, product_title, error_code = update_keepa_product(driver, asin, price)
             
             if success:
                 # Atualizar o banco de dados de produtos
@@ -219,11 +238,20 @@ async def add_new_product(update, context, asin, price, is_query=False, query=No
                 else:
                     await update.message.reply_text(product_info, parse_mode="Markdown", disable_web_page_preview=True)
             else:
-                message = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'."
+                # Formatar mensagem de erro com código se disponível
+                error_msg = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'."
+                if error_code:
+                    if error_code == "LIMIT_REACHED":
+                        error_msg = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'. A conta atingiu o limite de rastreamentos (5000)."
+                    elif error_code == "PAGE_ERROR":
+                        error_msg = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'. Erro ao carregar página."
+                    elif error_code == "FORM_ERROR":
+                        error_msg = f"❌ Falha ao adicionar ASIN {asin} à conta '{chosen_account}'. Erro no formulário."
+                
                 if is_query:
-                    await query.edit_message_text(message)
+                    await query.edit_message_text(error_msg)
                 else:
-                    await update.message.reply_text(message)
+                    await update.message.reply_text(error_msg)
         finally:
             # Importante: Sempre encerrar o driver para liberar recursos
             # Só fechamos o driver se criamos um novo (não fechamos o driver gerenciado pelo SessionManager)
