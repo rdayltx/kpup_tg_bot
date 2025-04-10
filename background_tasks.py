@@ -9,6 +9,7 @@ from data.product_database import product_db
 from keepa.browser_session_manager import browser_manager
 from keepa.api import update_keepa_product
 from utils.logger import get_logger
+from utils.timezone_config import get_brazil_datetime, datetime_to_isoformat  # Importações corretas
 
 logger = get_logger(__name__)
 settings = load_settings()
@@ -173,7 +174,8 @@ class BackgroundTaskManager:
             
             # Atualizar metadados da tarefa
             self.task_metadata[task_key]['attempts'] += 1
-            self.task_metadata[task_key]['last_attempt'] = datetime.now()
+            # Usar timezone do Brasil para last_attempt
+            self.task_metadata[task_key]['last_attempt'] = get_brazil_datetime()
             
             # Verificar se atingiu número máximo de tentativas
             max_attempts = 5  # Limite de tentativas para o mesmo ASIN
@@ -318,8 +320,8 @@ class BackgroundTaskManager:
                 # Salvar a fila atualizada
                 self.save_queue()
                 
-                # Registrar o horário da última execução
-                self.last_run_time = datetime.now().isoformat()
+                # Registrar o horário da última execução usando timezone do Brasil
+                self.last_run_time = datetime_to_isoformat(get_brazil_datetime())
                 
                 return True
                     

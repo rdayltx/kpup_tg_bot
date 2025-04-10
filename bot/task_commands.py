@@ -6,6 +6,7 @@ from telegram.ext import CommandHandler, ContextTypes
 from config.settings import load_settings
 from utils.logger import get_logger
 from background_tasks import task_manager
+from utils.timezone_config import get_brazil_datetime, format_brazil_datetime  # Importações corretas
 
 logger = get_logger(__name__)
 settings = load_settings()
@@ -90,6 +91,18 @@ async def tasks_status_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     status = task_manager.get_status()
     
+    # Formatar última execução usando timezone do Brasil
+    last_run_formatted = "Nunca"
+    if status['last_run_time']:
+        try:
+            # Assumindo que last_run_time já está em formato ISO com timezone
+            from datetime import datetime
+            dt = datetime.fromisoformat(status['last_run_time'])
+            last_run_formatted = format_brazil_datetime(dt)
+        except:
+            # Caso haja algum erro, mantém o valor original
+            last_run_formatted = status['last_run_time']
+    
     status_text = (
         f"📊 **Status das Tarefas em Segundo Plano**\n\n"
         f"🔄 Processador ativo: {'Sim' if status['is_running'] else 'Não'}\n"
@@ -100,8 +113,11 @@ async def tasks_status_command(update: Update, context: ContextTypes.DEFAULT_TYP
         f"🔢 Total processado: {status['task_count']}\n"
         f"✅ Sucessos: {status['success_count']}\n"
         f"❌ Falhas: {status['fail_count']}\n"
-        f"⏱️ Última execução: {status['last_run_time'] or 'Nunca'}"
+        f"⏱️ Última execução: {last_run_formatted}"
     )
+    
+    if 'tasks_with_attempts' in status:
+        status_text += f"\n📝 Tarefas com tentativas: {status['tasks_with_attempts']}"
     
     await update.message.reply_text(status_text, parse_mode="Markdown")
 
@@ -112,7 +128,13 @@ async def pause_tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     task_manager.pause_processing()
-    await update.message.reply_text("⏸️ Processamento de tarefas pausado.")
+    
+    # Informar horário usando timezone do Brasil
+    horario_atual = format_brazil_datetime(get_brazil_datetime())
+    
+    await update.message.reply_text(
+        f"⏸️ Processamento de tarefas pausado às {horario_atual}."
+    )
 
 async def resume_tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Comando para retomar o processamento de tarefas"""
@@ -127,7 +149,12 @@ async def resume_tasks_command(update: Update, context: ContextTypes.DEFAULT_TYP
         import asyncio
         asyncio.create_task(task_manager.start_background_processing())
     
-    await update.message.reply_text("▶️ Processamento de tarefas retomado.")
+    # Informar horário usando timezone do Brasil
+    horario_atual = format_brazil_datetime(get_brazil_datetime())
+    
+    await update.message.reply_text(
+        f"▶️ Processamento de tarefas retomado às {horario_atual}."
+    )
 
 async def clear_tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Comando para limpar a fila de tarefas"""
@@ -136,7 +163,13 @@ async def clear_tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     cleared = task_manager.clear_queue()
-    await update.message.reply_text(f"🧹 Fila de tarefas limpa. {cleared} tarefas removidas.")
+    
+    # Informar horário usando timezone do Brasil
+    horario_atual = format_brazil_datetime(get_brazil_datetime())
+    
+    await update.message.reply_text(
+        f"🧹 Fila de tarefas limpa às {horario_atual}. {cleared} tarefas removidas."
+    )
 
 def register_task_handlers(application):
     """Registrar os manipuladores de comandos de tarefas"""
