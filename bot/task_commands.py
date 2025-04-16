@@ -7,6 +7,7 @@ from config.settings import load_settings
 from utils.logger import get_logger
 from background_tasks import task_manager
 from utils.timezone_config import get_brazil_datetime, format_brazil_datetime  # Importações corretas
+from data.product_database import product_db
 
 logger = get_logger(__name__)
 settings = load_settings()
@@ -171,6 +172,66 @@ async def clear_tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"🧹 Fila de tarefas limpa às {horario_atual}. {cleared} tarefas removidas."
     )
 
+async def delete_db_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Excluir um produto apenas do banco de dados local, sem afetar o Keepa.
+    Útil para corrigir inconsistências entre o banco de dados e o Keepa.
+    
+    Formato: /deletedb ASIN [CONTA]
+    """
+    if not settings.ADMIN_ID or str(update.effective_user.id) != settings.ADMIN_ID:
+        await update.message.reply_text("Este comando é exclusivo para administradores.")
+        return
+    
+    try:
+        args = context.args
+        if len(args) < 1:
+            await update.message.reply_text("❌ Formato incorreto. Use: /deletedb ASIN [CONTA]")
+            return
+        
+        asin = args[0].upper()
+        
+        # Verificar se foi especificada uma conta
+        if len(args) > 1:
+            account_id = args[1]
+            if account_id not in settings.KEEPA_ACCOUNTS:
+                await update.message.reply_text(f"❌ Conta '{account_id}' não encontrada.")
+                return
+            
+            # Verificar se o produto existe no banco de dados
+            product_info = product_db.get_product(account_id, asin)
+            if not product_info:
+                await update.message.reply_text(f"❌ Produto {asin} não encontrado para conta '{account_id}'.")
+                return
+            
+            # Excluir o produto do banco de dados
+            success = product_db.delete_product(account_id, asin)
+            
+            if success:
+                await update.message.reply_text(f"✅ ASIN {asin} removido do banco de dados para conta '{account_id}'.")
+                logger.info(f"ASIN {asin} removido do banco de dados para conta {account_id} via comando deletedb")
+            else:
+                await update.message.reply_text(f"❌ Falha ao remover ASIN {asin} do banco de dados para conta '{account_id}'.")
+        else:
+            # Se não foi especificada uma conta, tentar remover de todas as contas onde existe
+            removed_count = 0
+            for acc_id in settings.KEEPA_ACCOUNTS.keys():
+                product_info = product_db.get_product(acc_id, asin)
+                if product_info:
+                    success = product_db.delete_product(acc_id, asin)
+                    if success:
+                        removed_count += 1
+                        logger.info(f"ASIN {asin} removido do banco de dados para conta {acc_id} via comando deletedb")
+            
+            if removed_count > 0:
+                await update.message.reply_text(f"✅ ASIN {asin} removido do banco de dados de {removed_count} conta(s).")
+            else:
+                await update.message.reply_text(f"❌ ASIN {asin} não encontrado em nenhuma conta no banco de dados.")
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro ao excluir produto do banco de dados: {str(e)}")
+        logger.error(f"Erro ao executar comando deletedb: {str(e)}")
+
 def register_task_handlers(application):
     """Registrar os manipuladores de comandos de tarefas"""
     application.add_handler(CommandHandler("queue_tasks", queue_tasks_command))
@@ -178,5 +239,6 @@ def register_task_handlers(application):
     application.add_handler(CommandHandler("pause_tasks", pause_tasks_command))
     application.add_handler(CommandHandler("resume_tasks", resume_tasks_command))
     application.add_handler(CommandHandler("clear_tasks", clear_tasks_command))
+    application.add_handler(CommandHandler("deletedb", delete_db_command))
     
     logger.info("Manipuladores de comandos de tarefas registrados")

@@ -1097,7 +1097,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/tasks_status` - Verificar o status das tarefas em segundo plano\n"
         "• `/pause_tasks` - Pausar o processamento de tarefas\n"
         "• `/resume_tasks` - Retomar o processamento de tarefas\n"
-        "• `/clear_tasks` - Limpar a fila de tarefas\n"
+        "• `/clear_tasks` - Limpar a fila de tarefas\n\n"
+        
+        "• `/deletedb ASIN CONTA` - Excluir produto do banco de dados\n"
+        "• `/deletedb ASIN` - Excluir produto do banco de dados Isso verificará todas as contas e removerá o produto de qualquer conta onde ele for encontrado\n\n"
         
         "**Comandos Avançados:**\n"
         "• `/recover` - Recuperar mensagens ausentes usando Pyrogram\n\n"
