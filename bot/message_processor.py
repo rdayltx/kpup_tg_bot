@@ -25,7 +25,35 @@ settings = load_settings()
 # Inicializar variáveis globais
 # Isso será compartilhado com handlers.py
 driver_sessions = {}
-post_info = load_post_info()
+
+
+def load_and_normalize_post_info():
+    """
+    Carrega os dados do arquivo JSON e normaliza as chaves para garantir consistência.
+    """
+    global post_info
+    
+    try:
+        # Carregar dados do arquivo
+        raw_post_info = load_post_info()
+        
+        # Criar novo dicionário normalizado
+        normalized_post_info = {}
+        
+        # Normalizar todas as chaves para strings
+        for key, value in raw_post_info.items():
+            # Garantir que a chave seja uma string
+            str_key = str(key)
+            normalized_post_info[str_key] = value
+            
+        logger.info(f"Dados de post_info carregados e normalizados: {len(normalized_post_info)} posts")
+        return normalized_post_info
+    except Exception as e:
+        logger.error(f"Erro ao carregar e normalizar post_info: {str(e)}")
+        return {}
+
+# Inicializar o post_info com a nova função
+post_info = load_and_normalize_post_info()
 
 async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Processar mensagens do canal/grupo e identificar posts e comentários."""
@@ -110,10 +138,18 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Verificar se este é um comentário em um post rastreado
     elif message.reply_to_message:
         replied_message = message.reply_to_message
+        
+        # Normalizar o ID da mensagem respondida
         replied_message_id = str(replied_message.message_id)
+        
+        # Log para diagnóstico
+        logger.info(f"Verificando comentário para mensagem {replied_message_id}")
+        logger.info(f"Total de chaves em post_info: {len(post_info)}")
+        logger.info(f"Algumas chaves em post_info: {list(post_info.keys())[:5]}...")
 
         # Verificar se o post original é rastreado
         if replied_message_id in post_info:
+            logger.info(f"Post encontrado em cache para mensagem {replied_message_id}")
             asin = post_info[replied_message_id]["asin"]
             source = post_info[replied_message_id]["source"]
             comment = message_text.strip()
@@ -153,27 +189,25 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         )
                     return False
             
-            # Usar fonte como identificador de conta se existir em nossas contas
-            account_identifier = None
-            if source in settings.KEEPA_ACCOUNTS:
-                account_identifier = source
-                logger.info(f"Usando fonte como identificador de conta: {account_identifier}")
-            else:
-                # Se a fonte não for uma conta válida, verificar se há uma terceira parte no comentário
-                parts = comment.strip().split(',')
-                if len(parts) >= 3:
-                    potential_account = parts[2].strip()
-                    if potential_account in settings.KEEPA_ACCOUNTS:
-                        account_identifier = potential_account
-                        logger.info(f"Usando parte do comentário como identificador de conta: {account_identifier}")
-            
-            # Se ainda não tiver uma conta válida, usar a padrão
-            if not account_identifier:
-                account_identifier = settings.DEFAULT_KEEPA_ACCOUNT
-                logger.info(f"Nenhuma conta válida encontrada, usando a padrão: {account_identifier}")
-            
-            if price:
-                logger.info(f"Preço extraído do comentário: {price}")
+                # Usar fonte como identificador de conta se existir em nossas contas
+                account_identifier = None
+                if source in settings.KEEPA_ACCOUNTS:
+                    account_identifier = source
+                    logger.info(f"Usando fonte como identificador de conta: {account_identifier}")
+                else:
+                    # Se a fonte não for uma conta válida, verificar se há uma terceira parte no comentário
+                    parts = comment.strip().split(',')
+                    if len(parts) >= 3:
+                        potential_account = parts[2].strip()
+                        if potential_account in settings.KEEPA_ACCOUNTS:
+                            account_identifier = potential_account
+                            logger.info(f"Usando parte do comentário como identificador de conta: {account_identifier}")
+                
+                # Se ainda não tiver uma conta válida, usar a padrão
+                if not account_identifier:
+                    account_identifier = settings.DEFAULT_KEEPA_ACCOUNT
+                    logger.info(f"Nenhuma conta válida encontrada, usando a padrão: {account_identifier}")
+                
                 await handle_price_update(context, asin, source, comment, price, account_identifier, user_name)
             else:
                 logger.warning(f"⚠️ Não foi possível extrair preço do comentário: {comment}")
@@ -184,7 +218,89 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         chat_id=settings.ADMIN_ID,
                         text=f"⚠️ Não foi possível extrair preço do comentário para ASIN {asin}: {comment}"
                     )
-
+        else:
+            # Post não encontrado no cache, tentar ler do texto da mensagem original
+            # Isso é útil se o bot foi reiniciado e os dados não foram mantidos
+            original_message_text = replied_message.text or replied_message.caption or ""
+            logger.info(f"Post não encontrado em cache. Tentando extrair ASIN do texto original: {original_message_text[:50]}...")
+            
+            # Tentar extrair ASIN do texto original
+            asin = extract_asin_from_text(original_message_text)
+            
+            if asin:
+                source = extract_source_from_text(original_message_text)
+                logger.info(f"ASIN extraído do texto original: {asin}, Fonte: {source}")
+                
+                # Adicionar ao post_info para referência futura
+                post_info[replied_message_id] = {
+                    "asin": asin,
+                    "source": source,
+                    "timestamp": datetime_to_isoformat(get_brazil_datetime())
+                }
+                save_post_info(post_info)
+                
+                # Agora processar o comentário
+                comment = message_text.strip()
+                
+                logger.info(f"Comentário identificado para ASIN {asin} (recuperado do texto): {comment}")
+                logger.info(f"Fonte do post original (recuperada do texto): {source}")
+                logger.info(f"Usuário que enviou o comentário: {user_name}")
+                
+                # Verificar comando DELETE
+                if re.search(r'\bDELETE\b', comment, re.IGNORECASE):
+                    logger.info(f"🗑️ Comando DELETE detectado para ASIN {asin}")
+                    await handle_delete_comment(context, asin, source, comment, user_name)
+                    return
+                
+                # Extrair preço do comentário
+                price = extract_price_from_comment(comment)
+                
+                if price:
+                    # Normalizar o preço
+                    try:
+                        float_price = float(price)
+                        price = f"{float_price:.2f}"
+                        price = price.replace(",", ".")
+                        
+                        logger.info(f"Preço normalizado: {price}")
+                    except ValueError:
+                        logger.error(f"Preço extraído não é um número válido: {price}")
+                        if settings.ADMIN_ID:
+                            await context.bot.send_message(
+                                chat_id=settings.ADMIN_ID,
+                                text=f"⚠️ Preço extraído não é válido para ASIN {asin}: {price}"
+                            )
+                        return False
+                    
+                    # Determinar a conta a ser usada
+                    account_identifier = None
+                    if source in settings.KEEPA_ACCOUNTS:
+                        account_identifier = source
+                    else:
+                        parts = comment.strip().split(',')
+                        if len(parts) >= 3:
+                            potential_account = parts[2].strip()
+                            if potential_account in settings.KEEPA_ACCOUNTS:
+                                account_identifier = potential_account
+                    
+                    # Usar conta padrão se necessário
+                    if not account_identifier:
+                        account_identifier = settings.DEFAULT_KEEPA_ACCOUNT
+                    
+                    # Processar a atualização
+                    await handle_price_update(context, asin, source, comment, price, account_identifier, user_name)
+                else:
+                    logger.warning(f"⚠️ Não foi possível extrair preço do comentário: {comment}")
+                    
+                    # Notificar administrador
+                    if settings.ADMIN_ID:
+                        await context.bot.send_message(
+                            chat_id=settings.ADMIN_ID,
+                            text=f"⚠️ Não foi possível extrair preço do comentário para ASIN {asin}: {comment}"
+                        )
+            else:
+                logger.warning(f"⚠️ Não foi possível identificar ASIN no post original após reinício.")
+                
 @async_retry(max_attempts=3, delay=5, backoff=2, jitter=0.1)
 async def handle_price_update(context, asin, source, comment, price, account_identifier, user_name):
     """
